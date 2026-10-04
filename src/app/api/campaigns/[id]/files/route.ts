@@ -6,7 +6,7 @@ import { uploadFile } from "@/lib/server/sessions";
 export const POST = handler(async (req: Request, ctx: RouteContext<"/api/campaigns/[id]/files">) => {
   const user = await requireApiUser(req);
   const { id } = await ctx.params;
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) throw new HttpError(413, "Картинка больше 8 МБ");
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) throw new HttpError(413, "Картинка больше 20 МБ");
   const data = new Uint8Array(await req.arrayBuffer());
   const name = new URL(req.url).searchParams.get("name") ?? "image";
   const mime = (req.headers.get("content-type") ?? "").split(";")[0].trim();

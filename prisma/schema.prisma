@@ -162,31 +162,34 @@ model Spell {
 
 /// A campaign (room): the GM and the players with their characters.
 model Campaign {
-  id          String              @id @default(cuid())
-  name        String
-  description String              @default("")
-  ownerId     String
-  owner       User                @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  id           String              @id @default(cuid())
+  name         String
+  description  String              @default("")
+  ownerId      String
+  owner        User                @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   /// Table rules (see src/lib/campaigns.ts).
-  settings    Json
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  members     CampaignMember[]
-  invites     CampaignInvite[]
-  characters  CampaignCharacter[]
+  settings     Json
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  members      CampaignMember[]
+  invites      CampaignInvite[]
+  characters   CampaignCharacter[]
   /// Party stash: { items: Item[], coins: Record<coin, number> }.
-  stash       Json                @default("{}")
-  templates   CampaignTemplate[]
-  grants      Grant[]
-  creatures   Creature[]
-  lootTables  LootTable[]
-  lootDrafts  LootDraft[]
-  mutations   MutationDraft[]
-  encounters  Encounter[]
-  sessions    GameSession[]
-  handouts    Handout[]
-  files       CampaignFile[]
-  shops       Shop[]
+  stash        Json                @default("{}")
+  templates    CampaignTemplate[]
+  grants       Grant[]
+  creatures    Creature[]
+  lootTables   LootTable[]
+  lootDrafts   LootDraft[]
+  mutations    MutationDraft[]
+  encounters   Encounter[]
+  sessions     GameSession[]
+  maps         CampaignMap[]
+  /// The map shown on the shared screen and suggested to players.
+  presentMapId String?
+  handouts     Handout[]
+  files        CampaignFile[]
+  shops        Shop[]
 
   @@index([ownerId])
 }
@@ -478,6 +481,37 @@ model Shop {
   items       Json     @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([campaignId])
+}
+
+/// World, place and battle maps: an uploaded image with pins, tokens and fog.
+model CampaignMap {
+  id         String        @id @default(cuid())
+  campaignId String
+  campaign   Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  parentId   String?
+  parent     CampaignMap?  @relation("MapTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children   CampaignMap[] @relation("MapTree")
+  name       String
+  /// world | place | combat
+  kind       String        @default("place")
+  imageId    String?
+  width      Int           @default(0)
+  height     Int           @default(0)
+  /// Players see it (fog still applies).
+  revealed   Boolean       @default(false)
+  /// MapGrid (src/lib/maps.ts)
+  grid       Json          @default("{}")
+  /// MapFog: { enabled, ops: [{ op: reveal|hide, x, y, w, h }] }
+  fog        Json          @default("{}")
+  /// MapPin[]
+  pins       Json          @default("[]")
+  /// MapToken[]
+  tokens     Json          @default("[]")
+  order      Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
   @@index([campaignId])
 }

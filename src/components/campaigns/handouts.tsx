@@ -29,7 +29,7 @@ export async function uploadImage(campaignId: string, file: File): Promise<strin
     return null;
   }
   if (file.size > MAX_IMAGE_BYTES) {
-    toast.error("Картинка больше 8 МБ");
+    toast.error("Картинка больше 20 МБ");
     return null;
   }
   const res = await fetch(`/api/campaigns/${campaignId}/files?name=${encodeURIComponent(file.name)}`, {

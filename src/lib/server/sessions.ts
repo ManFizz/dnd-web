@@ -203,15 +203,24 @@ export async function deleteHandout(campaignId: string, handoutId: string, userI
 export async function uploadFile(campaignId: string, userId: string, name: string, mime: string, data: Uint8Array) {
   await requireGm(campaignId, userId);
   if (!IMAGE_TYPES.includes(mime)) throw new HttpError(400, "Можно загрузить PNG, JPEG, WebP или GIF");
-  if (data.byteLength > MAX_IMAGE_BYTES) throw new HttpError(413, "Картинка больше 8 МБ");
+  if (data.byteLength > MAX_IMAGE_BYTES) throw new HttpError(413, "Картинка больше 20 МБ");
   const used = await prisma.campaignFile.aggregate({ where: { campaignId }, _sum: { size: true } });
   if ((used._sum.size ?? 0) + data.byteLength > 500 * 1024 * 1024) throw new HttpError(400, "Файлы кампании заняли 500 МБ");
   const row = await prisma.campaignFile.create({ data: { campaignId, name: name.slice(0, 200), mime, size: data.byteLength, data: Buffer.from(data) } });
   return { id: row.id };
 }
 
+/** Players get only the pictures of handouts shown to them; map images go through the fog (server/maps.ts). */
 export async function readFile(campaignId: string, fileId: string, userId: string) {
-  await requireMember(campaignId, userId);
+  const me = await requireMember(campaignId, userId);
+  if (!isGmRole(me.role)) {
+    const own = await ownCharacters(campaignId, userId);
+    const shown = await prisma.handout.findFirst({
+      where: { campaignId, imageId: fileId, revealed: true, OR: [{ visibleTo: { isEmpty: true } }, { visibleTo: { hasSome: own } }] },
+      select: { id: true },
+    });
+    if (!shown) throw new HttpError(404, "Файл не найден");
+  }
   const f = await prisma.campaignFile.findFirst({ where: { id: fileId, campaignId } });
   if (!f) throw new HttpError(404, "Файл не найден");
   return f;

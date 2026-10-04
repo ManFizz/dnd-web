@@ -20,6 +20,7 @@ import { CampaignNav, type TabDef } from "./nav";
 import { BestiaryTab } from "./bestiary";
 import { EncounterTab } from "./encounter";
 import { HandoutsTab } from "./handouts";
+import { MapsTab } from "./maps";
 import { SecretRoll, SessionsTab } from "./sessions";
 import { ShopTab } from "./shop";
 import { BringCharacterDialog, MyCharacters, PartyRoster, ReviewQueue } from "./lobby";
@@ -32,6 +33,7 @@ import { useCampaignStream, type StreamState } from "./use-campaign-stream";
 
 type Tab =
   | "party"
+  | "maps"
   | "encounter"
   | "sessions"
   | "handouts"
@@ -153,6 +155,7 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
 
   const tabs: TabDef<Tab>[] = [
     { value: "party", label: "Партия", group: "Стол", show: true },
+    { value: "maps", label: "Карты", group: "Стол", show: true },
     { value: "encounter", label: "Бой", group: "Стол", show: true },
     { value: "handouts", label: "Квесты и раздатки", group: "Стол", show: true },
     { value: "sessions", label: "Сессии", group: "Стол", show: true },
@@ -253,6 +256,7 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
             {current === "library" && <LibraryTab onGrant={(templateId) => setGranting({ templateId })} />}
             {current === "grants" && <GrantsTab onGrant={() => setGranting({ templateId: null })} />}
             {current === "stash" && <StashTab />}
+            {current === "maps" && <MapsTab />}
             {current === "encounter" && <EncounterTab />}
             {current === "sessions" && <SessionsTab />}
             {current === "handouts" && <HandoutsTab />}

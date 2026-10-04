@@ -75,5 +75,6 @@ export type HandoutRow = {
   updatedAt: string;
 };
 
-export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+/** Battle maps are big pictures; nginx must allow this body size too. */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];

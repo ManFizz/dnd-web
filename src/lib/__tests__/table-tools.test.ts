@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance, hpWord, playerView, sortCombatants, CombatantSchema, type EncounterRow } from "../encounter";
+import { fogged, gridDistance, GridSchema, normRect, PinSchema, playerMap, snap, TokenSchema, type MapRow } from "../maps";
 import { payCoins, priceInCp } from "../shop";
 
 const purse = (p: Partial<Record<"cp" | "sp" | "ep" | "gp" | "pp", number>>) => ({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0, ...p });
@@ -84,5 +85,66 @@ describe("initiative", () => {
     expect(view.combatants[0].health).toBe("40/80");
     expect(view.combatants[1].health).toBe("невредим");
     expect(playerView({ ...e, turn: 1 }, []).current).toBe("p1");
+  });
+});
+
+describe("maps", () => {
+  const grid = GridSchema.parse({ show: true, size: 50 });
+  const base: MapRow = {
+    id: "m",
+    name: "Склеп",
+    kind: "combat",
+    parentId: null,
+    imageId: null,
+    width: 500,
+    height: 500,
+    revealed: true,
+    grid,
+    fog: {
+      enabled: true,
+      ops: [
+        { op: "reveal", x: 0, y: 0, w: 250, h: 500 },
+        { op: "hide", x: 0, y: 0, w: 100, h: 100 },
+      ],
+    },
+    pins: [
+      PinSchema.parse({ id: "p1", x: 200, y: 200, label: "Алтарь" }),
+      PinSchema.parse({ id: "p2", x: 400, y: 200, label: "Тайник" }),
+      PinSchema.parse({ id: "p3", x: 50, y: 50, label: "Под туманом" }),
+      PinSchema.parse({ id: "p4", x: 200, y: 300, label: "Секрет", hidden: true }),
+    ],
+    tokens: [
+      TokenSchema.parse({ id: "t1", kind: "pc", characterId: "ch1", name: "Кай", x: 450, y: 450 }),
+      TokenSchema.parse({ id: "t2", kind: "monster", name: "Упырь", x: 450, y: 50 }),
+      TokenSchema.parse({ id: "t3", kind: "monster", name: "Крыса", x: 150, y: 150 }),
+    ],
+    order: 0,
+    fogKey: "",
+    updatedAt: "",
+  };
+
+  it("the last fog operation over a point decides", () => {
+    expect(fogged(base.fog, 200, 200)).toBe(false);
+    expect(fogged(base.fog, 50, 50)).toBe(true);
+    expect(fogged(base.fog, 400, 400)).toBe(true);
+    expect(fogged({ enabled: false, ops: [] }, 400, 400)).toBe(false);
+  });
+
+  it("players get no hidden or fogged pins and tokens, except their own", () => {
+    const view = playerMap(base, ["ch1"]);
+    expect(view.pins.map((p) => p.id)).toEqual(["p1"]);
+    expect(view.tokens.map((t) => t.id)).toEqual(["t1", "t3"]);
+    expect(playerMap(base).tokens.map((t) => t.id)).toEqual(["t3"]);
+  });
+
+  it("snaps tokens to cells and measures by the grid", () => {
+    expect(snap(grid, 63, 88)).toEqual({ x: 75, y: 75 });
+    expect(snap(grid, 63, 88, 2)).toEqual({ x: 50, y: 100 });
+    expect(snap({ ...grid, show: false }, 63.4, 88.6)).toEqual({ x: 63, y: 89 });
+    expect(gridDistance(grid, { x: 25, y: 25 }, { x: 175, y: 75 })).toBe(15);
+  });
+
+  it("normalises dragged rectangles and clips them to the image", () => {
+    expect(normRect({ x: 300, y: 50 }, { x: -20, y: 10 }, 250, 500)).toEqual({ x: 0, y: 10, w: 250, h: 40 });
   });
 });
