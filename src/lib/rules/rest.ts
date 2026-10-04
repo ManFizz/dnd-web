@@ -8,7 +8,8 @@ export type RestKindToApply = "short" | "long";
  * human-readable changes for the journal.
  */
 export function applyRest(doc: CharacterDoc, kind: RestKindToApply, opts: { dawn?: boolean } = {}): string[] {
-  const calc = new Calculator(structuredClone(doc));
+  // JSON clone: works for plain objects and for immer drafts alike.
+  const calc = new Calculator(JSON.parse(JSON.stringify(doc)) as CharacterDoc);
   const changes: string[] = [];
   const resets = new Set<string>(kind === "short" ? ["short"] : ["short", "long"]);
   if (opts.dawn) resets.add("dawn");

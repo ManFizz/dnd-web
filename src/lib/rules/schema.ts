@@ -160,6 +160,8 @@ export const ItemSchema = z.object({
   charges: UsesSchema.nullable().default(null),
   attacks: z.array(AttackSchema).max(50).default([]),
   link: z.string().max(500).default(""),
+  /** Where the item came from ("награда за квест"), shown in the journal. */
+  origin: shortText(200),
 });
 export type Item = z.infer<typeof ItemSchema>;
 

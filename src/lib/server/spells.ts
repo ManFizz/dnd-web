@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { spellSearchText, type ParsedSpell } from "@/lib/import/dndsu/parse";
 import { RichDocSchema, SpellDataSchema } from "@/lib/rules/schema";
-import { normalizeSpellName, splitSpellTitle, type LibrarySpell } from "@/lib/spells";
+import { normalizeSpellName, spellMatcher, type LibrarySpell } from "@/lib/spells";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./db";
 import { HttpError } from "./http";
@@ -179,20 +179,11 @@ export async function deleteSpell(user: SessionUser, id: string) {
 }
 
 /** Match spell names (as copied from another site) against the library. */
-export async function matchSpellNames(user: SessionUser, names: string[]) {
+export async function matchSpellNames(user: SessionUser, names: string[], edition?: "2014" | "2024") {
   const rows = await prisma.spell.findMany({ where: visibleTo(user.id), select: summarySelect });
-  const byName = new Map<string, (typeof rows)[number]>();
-  for (const r of rows) {
-    // Prefer the shared library over homebrew duplicates.
-    for (const key of [normalizeSpellName(r.nameRu), normalizeSpellName(r.nameEn)]) {
-      if (!key) continue;
-      const prev = byName.get(key);
-      if (!prev || (prev.ownerId && !r.ownerId)) byName.set(key, r);
-    }
-  }
+  const find = spellMatcher(rows, edition);
   return names.map((name) => {
-    const { ru, en } = splitSpellTitle(name);
-    const hit = byName.get(normalizeSpellName(en)) ?? byName.get(normalizeSpellName(ru)) ?? null;
+    const hit = find(name);
     return { name, spell: hit ? toLibrarySpell(hit) : null };
   });
 }

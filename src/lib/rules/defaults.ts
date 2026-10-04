@@ -70,6 +70,7 @@ export function newItem(partial: Partial<Item> = {}): Item {
     charges: null,
     attacks: [],
     link: "",
+    origin: "",
     ...partial,
   };
 }

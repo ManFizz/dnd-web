@@ -40,6 +40,8 @@ export const auth = betterAuth({
     autoSignIn: true,
   },
   socialProviders: socialProviders(),
+  // In-memory limits reset with every serverless instance, so attempts are counted in Postgres.
+  rateLimit: { storage: "database" },
   account: {
     accountLinking: { enabled: true, trustedProviders: ["google", "discord"] },
   },
