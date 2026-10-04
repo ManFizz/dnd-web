@@ -77,8 +77,12 @@ const FEATURE_KIND_LABELS: Record<Feature["kind"], string> = {
   feat: "Черта",
   mutation: "Мутация",
   boon: "Дар",
+  curse: "Проклятие",
   other: "Особенность",
 };
+
+/** Source name for effects of GM grants whose details are hidden from the player. */
+export const UNKNOWN_SOURCE = "Неизвестный источник";
 
 export function featureKindLabel(kind: Feature["kind"]): string {
   return FEATURE_KIND_LABELS[kind];
@@ -157,11 +161,13 @@ export class Calculator {
     for (const b of this.doc.bonuses) add(b, "bonus", b.id, "Бонус");
     for (const f of this.doc.features) {
       if (!f.active) continue;
-      for (const e of f.effects) add(e, "feature", f.id, `${FEATURE_KIND_LABELS[f.kind]}: ${f.name || "без названия"}`);
+      const name = f.grant && f.grant.visibility !== "visible" ? UNKNOWN_SOURCE : `${FEATURE_KIND_LABELS[f.kind]}: ${f.name || "без названия"}`;
+      for (const e of f.effects) add(e, "feature", f.id, name);
     }
     for (const item of this.doc.items) {
       for (const e of item.effects) {
-        if (itemEffectActive(item, e.when)) add(e, "item", item.id, `Предмет: ${item.name || "без названия"}`);
+        if (!itemEffectActive(item, e.when)) continue;
+        add(e, "item", item.id, item.grant && item.grant.visibility !== "visible" ? UNKNOWN_SOURCE : `Предмет: ${item.name || "без названия"}`);
       }
     }
     for (const id of this.doc.combat.conditions) {

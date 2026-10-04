@@ -21,6 +21,7 @@ import {
 } from "@/lib/campaigns";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./db";
+import { releaseGrants } from "./grants";
 import { HttpError } from "./http";
 import { publish } from "./realtime";
 
@@ -189,6 +190,11 @@ export async function updateCampaign(campaignId: string, userId: string, patch: 
 
 export async function deleteCampaign(campaignId: string, userId: string) {
   await requireOwner(campaignId, userId);
+  const party = await prisma.campaignCharacter.findMany({ where: { campaignId }, select: { characterId: true } });
+  await releaseGrants(
+    campaignId,
+    party.map((l) => l.characterId),
+  );
   await prisma.campaign.delete({ where: { id: campaignId } });
   await publish({ type: "deleted", campaignId });
 }
@@ -291,6 +297,11 @@ export async function removeMember(campaignId: string, memberId: string, userId:
   const self = target.userId === userId;
   if (!self && me.role !== "gm") throw new HttpError(403, "Это может только создатель кампании");
   if (target.role === "gm") throw new HttpError(400, "Создатель не может покинуть кампанию: её можно только удалить");
+  const leaving = await prisma.campaignCharacter.findMany({ where: { campaignId, userId: target.userId }, select: { characterId: true } });
+  await releaseGrants(
+    campaignId,
+    leaving.map((l) => l.characterId),
+  );
   await prisma.$transaction([
     prisma.campaignCharacter.deleteMany({ where: { campaignId, userId: target.userId } }),
     prisma.campaignMember.delete({ where: { id: memberId } }),
@@ -341,6 +352,7 @@ export async function detachCharacter(campaignId: string, linkId: string, userId
   const link = await prisma.campaignCharacter.findFirst({ where: { id: linkId, campaignId } });
   if (!link) throw new HttpError(404, "Персонаж не найден");
   if (link.userId !== userId && me.role !== "gm") throw new HttpError(403, "Убрать чужого персонажа может только создатель кампании");
+  await releaseGrants(campaignId, [link.characterId]);
   await prisma.campaignCharacter.delete({ where: { id: linkId } });
   await publish({ type: "characters", campaignId });
 }

@@ -233,6 +233,7 @@ export function SheetApp({
   initialTab,
   initialPanel,
   viewOnly,
+  campaignId,
 }: {
   id: string;
   doc: CharacterDoc;
@@ -241,11 +242,13 @@ export function SheetApp({
   initialPanel?: string;
   /** The GM viewing a player's sheet from this campaign. */
   viewOnly?: { campaignId: string };
+  /** Campaign the character plays in: GM changes arrive live. */
+  campaignId?: string | null;
 }) {
   // Old links used ?tab=journal and ?tab=settings; they open the panels now.
   const panel = isPanel(initialPanel) ? initialPanel : isPanel(initialTab) ? initialTab : null;
   return (
-    <SheetProvider initial={{ id, doc, version, readOnly: !!viewOnly, campaignId: viewOnly?.campaignId ?? null }}>
+    <SheetProvider initial={{ id, doc, version, readOnly: !!viewOnly, campaignId: viewOnly?.campaignId ?? campaignId ?? null }}>
       <RichEnvProvider>
         <SheetDialogs>
           <SheetLayout initialTab={initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : "combat"} initialPanel={panel} />

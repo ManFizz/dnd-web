@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useStore } from "zustand";
 import { CharacterDocSchema } from "@/lib/rules/schema";
 import { useCampaignStream } from "@/components/campaigns/use-campaign-stream";
@@ -34,20 +35,37 @@ export function SheetProvider({
   );
 }
 
-/** Read-only view: follows the player's saves through the campaign stream. */
+async function fetchRemote(id: string): Promise<{ doc: CharacterDoc; version: number } | null> {
+  const res = await fetch(`/api/characters/${id}`, { cache: "no-store" });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { doc: unknown; version: number };
+  const parsed = CharacterDocSchema.safeParse(data.doc);
+  return parsed.success ? { doc: parsed.data, version: data.version } : null;
+}
+
+/**
+ * Follows changes made elsewhere through the campaign stream: the GM watching a
+ * player's saves, or the player getting a grant or damage from the GM.
+ */
 function useLiveView(store: SheetStore) {
   const { readOnly, campaignId, id } = store.getState();
   const reload = async () => {
-    const res = await fetch(`/api/characters/${id}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const data = (await res.json()) as { doc: unknown; version: number };
-    const parsed = CharacterDocSchema.safeParse(data.doc);
-    if (parsed.success && data.version !== store.getState().version) store.getState().replace(parsed.data, data.version);
+    const s = store.getState();
+    // A save in flight finishes first; a conflict there rebases anyway.
+    if (s.status === "saving") return;
+    const remote = await fetchRemote(id);
+    if (!remote || remote.version === store.getState().version) return;
+    if (readOnly) store.getState().replace(remote.doc, remote.version);
+    else {
+      store.getState().rebase(remote.doc, remote.version);
+      toast.info("Лист обновился: пришли изменения");
+    }
   };
-  useCampaignStream(readOnly ? campaignId : null, (event) => {
+  useCampaignStream(campaignId, (event) => {
+    if (event.type === "notice" && !readOnly && !event.gmOnly) toast.info(event.text);
     if (event.type === "resync" || (event.type === "character" && event.characterId === id && event.version !== store.getState().version)) {
       reload().catch(() => {
-        // The next save event retries.
+        // The next event retries.
       });
     }
   });
@@ -67,6 +85,7 @@ function useAutosave(store: SheetStore) {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let failures = 0;
+    let conflicts = 0;
     let running = false;
 
     const schedule = (ms = 700) => {
@@ -88,8 +107,23 @@ function useAutosave(store: SheetStore) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ baseVersion: s.version, doc, events }),
         });
-        if (res.status === 409) {
-          store.setState({ status: "conflict", error: "Персонаж изменён в другом окне или на другом устройстве." });
+        if (res.status === 409 || res.status === 403) {
+          const reason = res.status === 403 ? await errorMessage(res) : null;
+          const remote = await fetchRemote(s.id);
+          conflicts++;
+          if (!remote || conflicts > 3) {
+            store.setState({ status: "conflict", error: "Персонаж изменён в другом окне или на другом устройстве." });
+            return;
+          }
+          if (reason) {
+            // A lock set by the GM: the server version wins, local edits are dropped.
+            toast.error(reason);
+            store.getState().replace(remote.doc, remote.version);
+            return;
+          }
+          // Someone else (usually the GM) saved first: replay our edits on top.
+          store.getState().rebase(remote.doc, remote.version);
+          schedule(100);
           return;
         }
         if (!res.ok) throw new Error(await errorMessage(res));
@@ -99,6 +133,8 @@ function useAutosave(store: SheetStore) {
         const pending = cur.pending.filter((e) => !sent.has(e));
         const still = cur.doc !== doc || pending.length > 0;
         failures = 0;
+        conflicts = 0;
+        store.getState().saved(doc, version);
         store.setState({ version, pending, dirty: still, status: still ? "dirty" : "saved", savedAt: Date.now(), error: null });
         if (still) schedule(300);
       } catch (e) {

@@ -1,4 +1,5 @@
 import { Calculator, hitDiceSummary } from "./compute";
+import { expireOnRest } from "./grant-rules";
 import type { CharacterDoc, Counter } from "./schema";
 
 export type RestKindToApply = "short" | "long";
@@ -72,6 +73,8 @@ export function applyRest(doc: CharacterDoc, kind: RestKindToApply, opts: { dawn
       doc.combat.exhaustion -= 1;
     }
   }
+  // GM grants that last until a rest, or for a number of days.
+  changes.push(...expireOnRest(doc, kind));
   return changes;
 }
 

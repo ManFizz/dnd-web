@@ -13,6 +13,7 @@ import { Badge, Empty, Pips } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { useOpenDialog } from "./dialogs-context";
 import { effectSummary } from "./effects";
+import { GrantBadge, MaskedText, useGrantView } from "./grant-badge";
 import { makeEvent, useChange, useComputed } from "./store";
 
 export function UsesControl({ feature }: { feature: Feature }) {
@@ -44,9 +45,7 @@ export function UsesControl({ feature }: { feature: Feature }) {
       <Button size="icon-sm" variant="outline" onClick={() => setUsed(used + 1)} disabled={max !== null && used >= max} aria-label="Использовать">
         −
       </Button>
-      <span title={`Восстановление: ${reset.toLowerCase()}`}>
-        {max !== null ? `${Math.max(0, max - used)}/${max}` : `исп. ${used}`}
-      </span>
+      <span title={`Восстановление: ${reset.toLowerCase()}`}>{max !== null ? `${Math.max(0, max - used)}/${max}` : `исп. ${used}`}</span>
       <Button size="icon-sm" variant="outline" onClick={() => setUsed(used - 1)} disabled={used <= 0} aria-label="Вернуть">
         +
       </Button>
@@ -58,7 +57,10 @@ export function FeatureCard({ feature, defaultOpen = false }: { feature: Feature
   const [open, setOpen] = useState(defaultOpen);
   const openDialog = useOpenDialog();
   const change = useChange();
+  const view = useGrantView(feature.grant);
   const hasText = !isDocEmpty(feature.description);
+  const locked = !!feature.grant && feature.grant.lock === "noremove" && !view.hidden;
+  if (view.hidden) return null;
   return (
     <div className={cn("rounded-xl border border-line bg-panel", !feature.active && "opacity-60")}>
       <div className="flex items-start gap-2 px-3 py-2.5">
@@ -70,7 +72,8 @@ export function FeatureCard({ feature, defaultOpen = false }: { feature: Feature
             {feature.name || "Без названия"}
           </button>
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            {feature.source && <span>{feature.source}</span>}
+            <GrantBadge grant={feature.grant} />
+            {feature.source && !view.masked && <span>{feature.source}</span>}
             {feature.level > 0 && <Badge>{feature.level} ур.</Badge>}
             {feature.origin && <span>· от: {feature.origin}</span>}
             {feature.tags.map((t) => (
@@ -84,21 +87,28 @@ export function FeatureCard({ feature, defaultOpen = false }: { feature: Feature
               </Badge>
             )}
           </div>
-          {feature.effects.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {feature.effects.map((e) => (
-                <span key={e.id} className={cn("rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent", !e.enabled && "line-through opacity-50")}>
-                  {effectSummary(e)}
-                </span>
-              ))}
+          {view.masked ? (
+            <div className="mt-1">
+              <MaskedText />
             </div>
+          ) : (
+            feature.effects.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {feature.effects.map((e) => (
+                  <span key={e.id} className={cn("rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent", !e.enabled && "line-through opacity-50")}>
+                    {effectSummary(e)}
+                  </span>
+                ))}
+              </div>
+            )
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <UsesControl feature={feature} />
-          <Tip content={feature.active ? "Действует" : "Отключено"}>
+          <Tip content={locked ? "Отключить нельзя: так решил ГМ" : feature.active ? "Действует" : "Отключено"}>
             <div>
               <Switch
+                disabled={locked && feature.active}
                 checked={feature.active}
                 onCheckedChange={(active) =>
                   change(
@@ -119,8 +129,12 @@ export function FeatureCard({ feature, defaultOpen = false }: { feature: Feature
       </div>
       {open && (
         <div className="border-t border-line px-4 py-3">
-          <RichView doc={feature.description} label={feature.name} empty={<p className="text-sm text-faint">Описания нет.</p>} />
-          {!hasText && feature.effects.length === 0 && (
+          {view.masked ? (
+            <p className="text-sm text-faint">ГМ пока не раскрыл, что это.</p>
+          ) : (
+            <RichView doc={feature.description} label={feature.name} empty={<p className="text-sm text-faint">Описания нет.</p>} />
+          )}
+          {!hasText && !feature.grant && feature.effects.length === 0 && (
             <Button size="sm" variant="ghost" className="mt-2" onClick={() => openDialog({ kind: "feature", feature })}>
               <Pencil /> Заполнить
             </Button>
@@ -150,11 +164,7 @@ export function FeatureList({
   const sorted = groupByLevel ? [...features].sort((a, b) => a.level - b.level) : features;
   return (
     <div className="flex flex-col gap-2">
-      {sorted.length === 0 ? (
-        <Empty title={emptyTitle}>{emptyText}</Empty>
-      ) : (
-        sorted.map((f) => <FeatureCard key={f.id} feature={f} />)
-      )}
+      {sorted.length === 0 ? <Empty title={emptyTitle}>{emptyText}</Empty> : sorted.map((f) => <FeatureCard key={f.id} feature={f} />)}
       <div>
         <Button size="sm" variant="outline" onClick={() => openDialog({ kind: "feature", preset })}>
           <Plus /> {addLabel}

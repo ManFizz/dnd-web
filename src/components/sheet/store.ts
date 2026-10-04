@@ -7,6 +7,8 @@ import { createStore, useStore, type StoreApi } from "zustand";
 import type { CharacterEventInput } from "@/lib/events";
 import type { Sheet } from "@/lib/rules/compute";
 import type { RollResult } from "@/lib/rules/formula";
+import { CharacterDocSchema } from "@/lib/rules/schema";
+import { rebaseDoc } from "@/lib/rules/merge";
 import type { CharacterDoc } from "@/lib/rules/schema";
 import type { LibrarySpell } from "@/lib/spells";
 
@@ -32,6 +34,8 @@ type SheetData = {
   /** Campaign the viewer came from when the sheet is read-only. */
   campaignId: string | null;
   doc: CharacterDoc;
+  /** Last document known to be on the server; the base of a three-way merge. */
+  base: CharacterDoc;
   version: number;
   /** Journal entries that are not saved yet. */
   pending: CharacterEventInput[];
@@ -57,6 +61,10 @@ type SheetActions = {
   undo: () => void;
   redo: () => void;
   replace: (doc: CharacterDoc, version: number) => void;
+  /** A newer server version arrived (a GM change): replay unsaved edits on top of it. */
+  rebase: (remote: CharacterDoc, version: number) => void;
+  /** The server accepted `doc` as `version`. */
+  saved: (doc: CharacterDoc, version: number) => void;
   requestSave: () => void;
   addLibrary: (spells: LibrarySpell[], missing?: string[]) => void;
   pushRoll: (roll: RollEntry) => void;
@@ -99,6 +107,7 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       readOnly,
       campaignId: init.campaignId ?? null,
       doc: init.doc,
+      base: init.doc,
       version: init.version,
       pending: [],
       dirty: false,
@@ -167,7 +176,22 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       },
 
       replace(doc, version) {
-        set({ doc, version, pending: [], dirty: false, status: "saved", error: null, past: [], future: [] });
+        set({ doc, base: doc, version, pending: [], dirty: false, status: "saved", error: null, past: [], future: [] });
+      },
+
+      rebase(remote, version) {
+        const s = get();
+        if (!s.dirty) {
+          set({ doc: remote, base: remote, version, status: "saved", error: null, past: [], future: [] });
+          return;
+        }
+        const merged = CharacterDocSchema.safeParse(rebaseDoc(s.base, s.doc, remote));
+        // History points at documents without the remote change; undo would revert it.
+        set({ doc: merged.success ? merged.data : remote, base: remote, version, past: [], future: [], status: "dirty", error: null });
+      },
+
+      saved(doc, version) {
+        set({ base: doc, version });
       },
 
       requestSave() {

@@ -1,12 +1,12 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BODY_PARTS, REST_LABELS, REST_KINDS } from "@/lib/rules/constants";
 import { featureKindLabel } from "@/lib/rules/compute";
 import { newEffect } from "@/lib/rules/defaults";
 import { ARMOR_TYPE_LABELS, FEATURE_KIND_OPTIONS, ITEM_CATEGORY_LABELS, RARITY_LABELS } from "@/lib/rules/labels";
-import type { Armor, Attack, Counter, Effect, Feature, Item, Uses, Weapon } from "@/lib/rules/schema";
+import type { Armor, Attack, Counter, Effect, Feature, GrantMark, Item, Uses, Weapon } from "@/lib/rules/schema";
 import { ITEM_CATEGORIES, RARITIES } from "@/lib/rules/schema";
 import { RichEditor } from "@/components/rich/editor";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Checkbox, Field, Input, NumberInput, Select, Switch, Textarea } from "@
 import { Segmented } from "@/components/ui/misc";
 import { Modal } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
+import { ReadOnlyContext, useReadOnly } from "@/components/ui/read-only";
 import { ATTACK_ABILITY_OPTIONS, AttackEditor, AttacksEditor, DamageTypesDatalist } from "./attacks";
 import { EffectRow, EffectsEditor, effectSummary, FormulaPreview } from "./effects";
 import { makeEvent, useChange, useDoc } from "./store";
@@ -53,9 +54,43 @@ function UsesEditor({ uses, onChange, title = "Ограниченные испо
   );
 }
 
+/**
+ * What the player may do with an entry the GM granted. The GM's library
+ * (onSubmit mode) and the GM's read-only view are not limited by it.
+ */
+function useGrantRules(grant: GrantMark | null, library: boolean) {
+  const gmView = useReadOnly();
+  if (library || gmView || !grant) return { canEdit: true, canRemove: true, masked: false, inputsLocked: gmView, notice: null as React.ReactNode };
+  const masked = grant.visibility !== "visible";
+  const canEdit = grant.lock === "none" && !masked;
+  const canRemove = grant.lock !== "noremove";
+  const notice = (
+    <div className="mb-3 flex items-start gap-2 rounded-lg bg-info-soft px-3 py-2 text-sm text-info">
+      <Lock className="mt-0.5 size-4 shrink-0" />
+      <div>
+        Выдано ГМом{grant.reason ? `: ${grant.reason}` : ""}.{!canEdit && " Менять нельзя."}
+        {!canRemove && " Убрать нельзя."}
+        {grant.removal && <div className="text-muted">Как избавиться: {grant.removal}</div>}
+      </div>
+    </div>
+  );
+  return { canEdit, canRemove, masked, inputsLocked: !canEdit, notice };
+}
+
 // ------------------------------------------------------------------ features
 
-export function FeatureDialog({ initial, isNew, onClose }: { initial: Feature; isNew: boolean; onClose: () => void }) {
+export function FeatureDialog({
+  initial,
+  isNew,
+  onClose,
+  onSubmit,
+}: {
+  initial: Feature;
+  isNew: boolean;
+  onClose: () => void;
+  /** Library mode: hand the result back instead of changing the sheet. */
+  onSubmit?: (next: Feature) => void;
+}) {
   const [f, setF] = useState(initial);
   const [tab, setTab] = useState<"main" | "text" | "effects" | "attacks">("main");
   const change = useChange();
@@ -64,23 +99,35 @@ export function FeatureDialog({ initial, isNew, onClose }: { initial: Feature; i
   const set = <K extends keyof Feature>(k: K, v: Feature[K]) => setF((x) => ({ ...x, [k]: v }));
   const kindLabel = featureKindLabel(f.kind);
   const isMutation = f.kind === "mutation";
+  const rules = useGrantRules(initial.grant, !!onSubmit);
 
   const save = () => {
     const name = f.name.trim() || "Без названия";
     const next = { ...f, name };
+    if (onSubmit) {
+      onSubmit(next);
+      return;
+    }
     change(
       (d) => {
         const idx = d.features.findIndex((x) => x.id === next.id);
         if (idx >= 0) d.features[idx] = next;
         else d.features.push(next);
       },
-      makeEvent("feature", `${isNew ? "Добавлено" : "Изменено"}: ${kindLabel.toLowerCase()} «${name}»`, isNew ? next.origin || next.source : "", { id: next.id }),
+      makeEvent("feature", `${isNew ? "Добавлено" : "Изменено"}: ${kindLabel.toLowerCase()} «${name}»`, isNew ? next.origin || next.source : "", {
+        id: next.id,
+      }),
     );
     onClose();
   };
 
   const remove = async () => {
-    const ok = await ask.confirm({ title: `Удалить «${f.name || "без названия"}»?`, description: "Все её бонусы перестанут действовать.", confirmLabel: "Удалить", danger: true });
+    const ok = await ask.confirm({
+      title: `Удалить «${f.name || "без названия"}»?`,
+      description: "Все её бонусы перестанут действовать.",
+      confirmLabel: "Удалить",
+      danger: true,
+    });
     if (!ok) return;
     change(
       (d) => {
@@ -100,90 +147,108 @@ export function FeatureDialog({ initial, isNew, onClose }: { initial: Feature; i
       description={isMutation ? "Мутация работает как предмет: бонусы, атаки и описание. Её можно отключить, не удаляя." : undefined}
       footer={
         <>
-          {!isNew && (
+          {!isNew && !onSubmit && rules.canRemove && (
             <Button variant="danger" onClick={remove} className="mr-auto">
               <Trash2 /> Удалить
             </Button>
           )}
           <Button variant="ghost" onClick={close}>
-            Отмена
+            {rules.canEdit ? "Отмена" : "Закрыть"}
           </Button>
-          <Button variant="primary" onClick={save}>
-            Сохранить
-          </Button>
+          {rules.canEdit && (
+            <Button variant="primary" onClick={save}>
+              Сохранить
+            </Button>
+          )}
         </>
       }
     >
-      <div className="mb-4 overflow-x-auto">
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "main", label: "Основное" },
-            { value: "text", label: "Описание" },
-            { value: "effects", label: `Эффекты${f.effects.length ? ` · ${f.effects.length}` : ""}` },
-            { value: "attacks", label: `Атаки${f.attacks.length ? ` · ${f.attacks.length}` : ""}` },
-          ]}
-        />
-      </div>
-      {tab === "main" && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Название" className="sm:col-span-2">
-            <Input autoFocus={isNew} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder={isMutation ? "Ноги сатира" : "Тёмное зрение"} />
-          </Field>
-          <Field label="Вид">
-            <Select value={f.kind} onChange={(e) => set("kind", e.target.value as Feature["kind"])} options={FEATURE_KIND_OPTIONS} />
-          </Field>
-          <Field label="Источник" hint="Класс и уровень, книга, решение мастера">
-            <Input value={f.source} onChange={(e) => set("source", e.target.value)} placeholder="Волшебник, 2 уровень" />
-          </Field>
-          {isMutation && (
-            <>
-              <Field label="Часть тела">
-                <Select value={f.bodyPart || "other"} onChange={(e) => set("bodyPart", e.target.value)} options={BODY_PARTS.map((p) => ({ value: p.id, label: p.label }))} />
-              </Field>
-              <Field label="Откуда" hint="От какой расы или существа">
-                <Input value={f.origin} onChange={(e) => set("origin", e.target.value)} placeholder="Сатир, укус оборотня…" />
-              </Field>
-            </>
-          )}
-          {(f.kind === "class" || f.kind === "race") && (
-            <Field label="Уровень получения">
-              <NumberInput value={f.level} min={0} max={30} onCommit={(v) => set("level", v)} />
-            </Field>
-          )}
-          <Field label="Метки" hint="Через запятую" className={f.kind === "class" || f.kind === "race" ? "" : "sm:col-span-2"}>
-            <Input
-              value={f.tags.join(", ")}
-              onChange={(e) =>
-                set(
-                  "tags",
-                  e.target.value
-                    .split(",")
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                )
-              }
-              placeholder="бой, социальное"
+      {rules.notice}
+      {rules.masked ? (
+        <p className="text-sm text-muted">Свойства скрыты ГМом: «???». Они действуют, но узнать их можно только в игре.</p>
+      ) : (
+        <ReadOnlyContext value={rules.inputsLocked}>
+          <div className="mb-4 overflow-x-auto">
+            <Segmented
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "main", label: "Основное" },
+                { value: "text", label: "Описание" },
+                { value: "effects", label: `Эффекты${f.effects.length ? ` · ${f.effects.length}` : ""}` },
+                { value: "attacks", label: `Атаки${f.attacks.length ? ` · ${f.attacks.length}` : ""}` },
+              ]}
             />
-          </Field>
-          <div className="sm:col-span-2">
-            <Switch checked={f.active} onCheckedChange={(v) => set("active", v)} label="Действует (выключите, чтобы временно отключить бонусы)" />
           </div>
-          <div className="sm:col-span-2">
-            <UsesEditor uses={f.uses} onChange={(u) => set("uses", u)} />
-          </div>
-        </div>
+          {tab === "main" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Название" className="sm:col-span-2">
+                <Input
+                  autoFocus={isNew}
+                  value={f.name}
+                  onChange={(e) => set("name", e.target.value)}
+                  placeholder={isMutation ? "Ноги сатира" : "Тёмное зрение"}
+                />
+              </Field>
+              <Field label="Вид">
+                <Select value={f.kind} onChange={(e) => set("kind", e.target.value as Feature["kind"])} options={FEATURE_KIND_OPTIONS} />
+              </Field>
+              <Field label="Источник" hint="Класс и уровень, книга, решение мастера">
+                <Input value={f.source} onChange={(e) => set("source", e.target.value)} placeholder="Волшебник, 2 уровень" />
+              </Field>
+              {isMutation && (
+                <>
+                  <Field label="Часть тела">
+                    <Select
+                      value={f.bodyPart || "other"}
+                      onChange={(e) => set("bodyPart", e.target.value)}
+                      options={BODY_PARTS.map((p) => ({ value: p.id, label: p.label }))}
+                    />
+                  </Field>
+                  <Field label="Откуда" hint="От какой расы или существа">
+                    <Input value={f.origin} onChange={(e) => set("origin", e.target.value)} placeholder="Сатир, укус оборотня…" />
+                  </Field>
+                </>
+              )}
+              {(f.kind === "class" || f.kind === "race") && (
+                <Field label="Уровень получения">
+                  <NumberInput value={f.level} min={0} max={30} onCommit={(v) => set("level", v)} />
+                </Field>
+              )}
+              <Field label="Метки" hint="Через запятую" className={f.kind === "class" || f.kind === "race" ? "" : "sm:col-span-2"}>
+                <Input
+                  value={f.tags.join(", ")}
+                  onChange={(e) =>
+                    set(
+                      "tags",
+                      e.target.value
+                        .split(",")
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                    )
+                  }
+                  placeholder="бой, социальное"
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Switch checked={f.active} onCheckedChange={(v) => set("active", v)} label="Действует (выключите, чтобы временно отключить бонусы)" />
+              </div>
+              <div className="sm:col-span-2">
+                <UsesEditor uses={f.uses} onChange={(u) => set("uses", u)} />
+              </div>
+            </div>
+          )}
+          {tab === "text" && <RichEditor value={f.description} onChange={(doc) => set("description", doc)} minHeight="14rem" autoFocus />}
+          {tab === "effects" && (
+            <EffectsEditor
+              effects={f.effects}
+              onChange={(effects) => set("effects", effects)}
+              emptyText="Эффекты применяются автоматически, пока особенность действует: +2 к Ловкости, скорость полёта 30, сопротивление яду…"
+            />
+          )}
+          {tab === "attacks" && <AttacksEditor attacks={f.attacks} onChange={(a) => set("attacks", a)} />}
+        </ReadOnlyContext>
       )}
-      {tab === "text" && <RichEditor value={f.description} onChange={(doc) => set("description", doc)} minHeight="14rem" autoFocus />}
-      {tab === "effects" && (
-        <EffectsEditor
-          effects={f.effects}
-          onChange={(effects) => set("effects", effects)}
-          emptyText="Эффекты применяются автоматически, пока особенность действует: +2 к Ловкости, скорость полёта 30, сопротивление яду…"
-        />
-      )}
-      {tab === "attacks" && <AttacksEditor attacks={f.attacks} onChange={(a) => set("attacks", a)} />}
     </Modal>
   );
 }
@@ -234,7 +299,11 @@ function ArmorEditor({ armor, onChange }: { armor: Armor; onChange: (a: Armor) =
         <NumberInput value={armor.strength} min={0} max={30} onCommit={(strength) => onChange({ ...armor, strength })} />
       </Field>
       <div className="flex items-end pb-2 sm:col-span-2">
-        <Checkbox checked={armor.stealthDisadvantage} onChange={(e) => onChange({ ...armor, stealthDisadvantage: e.target.checked })} label="Помеха на Скрытность" />
+        <Checkbox
+          checked={armor.stealthDisadvantage}
+          onChange={(e) => onChange({ ...armor, stealthDisadvantage: e.target.checked })}
+          label="Помеха на Скрытность"
+        />
       </div>
     </div>
   );
@@ -286,13 +355,25 @@ function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weap
   );
 }
 
-export function ItemDialog({ initial, isNew, onClose }: { initial: Item; isNew: boolean; onClose: () => void }) {
+export function ItemDialog({
+  initial,
+  isNew,
+  onClose,
+  onSubmit,
+}: {
+  initial: Item;
+  isNew: boolean;
+  onClose: () => void;
+  /** Library mode: hand the result back instead of changing the sheet. */
+  onSubmit?: (next: Item) => void;
+}) {
   const [item, setItem] = useState(initial);
   const [tab, setTab] = useState<"main" | "text" | "effects" | "attacks">("main");
   const change = useChange();
   const ask = useAsk();
   const close = useGuardedClose(initial, item, onClose);
   const set = <K extends keyof Item>(k: K, v: Item[K]) => setItem((x) => ({ ...x, [k]: v }));
+  const rules = useGrantRules(initial.grant, !!onSubmit);
 
   const setCategory = (category: Item["category"]) =>
     setItem((x) => ({
@@ -311,15 +392,24 @@ export function ItemDialog({ initial, isNew, onClose }: { initial: Item; isNew: 
       weapon: item.category === "weapon" ? item.weapon : null,
       attuned: item.attunement ? item.attuned : false,
     };
+    if (onSubmit) {
+      onSubmit(next);
+      return;
+    }
     change(
       (d) => {
         const idx = d.items.findIndex((x) => x.id === next.id);
         if (idx >= 0) d.items[idx] = next;
         else d.items.push(next);
       },
-      makeEvent("item", isNew ? `Получен предмет «${name}»${next.quantity !== 1 ? ` ×${next.quantity}` : ""}` : `Изменён предмет «${name}»`, isNew ? next.origin : "", {
-        id: next.id,
-      }),
+      makeEvent(
+        "item",
+        isNew ? `Получен предмет «${name}»${next.quantity !== 1 ? ` ×${next.quantity}` : ""}` : `Изменён предмет «${name}»`,
+        isNew ? next.origin : "",
+        {
+          id: next.id,
+        },
+      ),
     );
     onClose();
   };
@@ -350,99 +440,116 @@ export function ItemDialog({ initial, isNew, onClose }: { initial: Item; isNew: 
       title={isNew ? "Новый предмет" : item.name || "Предмет"}
       footer={
         <>
-          {!isNew && (
+          {!isNew && !onSubmit && rules.canRemove && (
             <Button variant="danger" onClick={remove} className="mr-auto">
               <Trash2 /> Убрать
             </Button>
           )}
           <Button variant="ghost" onClick={close}>
-            Отмена
+            {rules.canEdit ? "Отмена" : "Закрыть"}
           </Button>
-          <Button variant="primary" onClick={save}>
-            Сохранить
-          </Button>
+          {rules.canEdit && (
+            <Button variant="primary" onClick={save}>
+              Сохранить
+            </Button>
+          )}
         </>
       }
     >
-      <div className="mb-4 overflow-x-auto">
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "main", label: "Основное" },
-            { value: "text", label: "Описание" },
-            { value: "effects", label: `Эффекты${item.effects.length ? ` · ${item.effects.length}` : ""}` },
-            { value: "attacks", label: `Атаки${item.attacks.length ? ` · ${item.attacks.length}` : ""}` },
-          ]}
-        />
-      </div>
-      {tab === "main" && (
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Field label="Название" className="sm:col-span-2">
-              <Input autoFocus={isNew} value={item.name} onChange={(e) => set("name", e.target.value)} placeholder="Плащ защиты" />
-            </Field>
-            <Field label="Тип">
-              <Select
-                value={item.category}
-                onChange={(e) => setCategory(e.target.value as Item["category"])}
-                options={ITEM_CATEGORIES.map((c) => ({ value: c, label: ITEM_CATEGORY_LABELS[c] }))}
-              />
-            </Field>
-            <Field label="Редкость">
-              <Select value={item.rarity} onChange={(e) => set("rarity", e.target.value as Item["rarity"])} options={RARITIES.map((r) => ({ value: r, label: RARITY_LABELS[r] }))} />
-            </Field>
-            <Field label="Количество">
-              <NumberInput value={item.quantity} min={0} integer={false} onCommit={(v) => set("quantity", v)} />
-            </Field>
-            <Field label="Вес (фнт.)">
-              <NumberInput value={item.weight} min={0} integer={false} onCommit={(v) => set("weight", v)} />
-            </Field>
-            <Field label="Цена">
-              <Input value={item.cost} onChange={(e) => set("cost", e.target.value)} placeholder="50 зм" />
-            </Field>
-            <Field label="Откуда" hint={isNew ? "Попадёт в журнал" : undefined}>
-              <Input value={item.origin} onChange={(e) => set("origin", e.target.value)} placeholder="Награда, покупка…" />
-            </Field>
+      {rules.notice}
+      {rules.masked ? (
+        <p className="text-sm text-muted">Свойства предмета скрыты ГМом: «???». Узнать их можно в игре, например заклинанием «Опознание».</p>
+      ) : (
+        <ReadOnlyContext value={rules.inputsLocked}>
+          <div className="mb-4 overflow-x-auto">
+            <Segmented
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "main", label: "Основное" },
+                { value: "text", label: "Описание" },
+                { value: "effects", label: `Эффекты${item.effects.length ? ` · ${item.effects.length}` : ""}` },
+                { value: "attacks", label: `Атаки${item.attacks.length ? ` · ${item.attacks.length}` : ""}` },
+              ]}
+            />
           </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Switch checked={item.equipped} onCheckedChange={(v) => set("equipped", v)} label="Надет / в руках" />
-            <Switch checked={item.attunement} onCheckedChange={(v) => setItem((x) => ({ ...x, attunement: v, attuned: v ? x.attuned : false }))} label="Требует настройки" />
-            {item.attunement && <Switch checked={item.attuned} onCheckedChange={(v) => set("attuned", v)} label="Настроен" />}
-          </div>
-          {item.category === "armor" && item.armor && (
-            <div className="rounded-lg border border-line p-3">
-              <div className="mb-2 text-sm font-semibold">Доспех</div>
-              <ArmorEditor armor={item.armor} onChange={(a) => set("armor", a)} />
+          {tab === "main" && (
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3 sm:grid-cols-4">
+                <Field label="Название" className="sm:col-span-2">
+                  <Input autoFocus={isNew} value={item.name} onChange={(e) => set("name", e.target.value)} placeholder="Плащ защиты" />
+                </Field>
+                <Field label="Тип">
+                  <Select
+                    value={item.category}
+                    onChange={(e) => setCategory(e.target.value as Item["category"])}
+                    options={ITEM_CATEGORIES.map((c) => ({ value: c, label: ITEM_CATEGORY_LABELS[c] }))}
+                  />
+                </Field>
+                <Field label="Редкость">
+                  <Select
+                    value={item.rarity}
+                    onChange={(e) => set("rarity", e.target.value as Item["rarity"])}
+                    options={RARITIES.map((r) => ({ value: r, label: RARITY_LABELS[r] }))}
+                  />
+                </Field>
+                <Field label="Количество">
+                  <NumberInput value={item.quantity} min={0} integer={false} onCommit={(v) => set("quantity", v)} />
+                </Field>
+                <Field label="Вес (фнт.)">
+                  <NumberInput value={item.weight} min={0} integer={false} onCommit={(v) => set("weight", v)} />
+                </Field>
+                <Field label="Цена">
+                  <Input value={item.cost} onChange={(e) => set("cost", e.target.value)} placeholder="50 зм" />
+                </Field>
+                <Field label="Откуда" hint={isNew ? "Попадёт в журнал" : undefined}>
+                  <Input value={item.origin} onChange={(e) => set("origin", e.target.value)} placeholder="Награда, покупка…" />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                <Switch checked={item.equipped} onCheckedChange={(v) => set("equipped", v)} label="Надет / в руках" />
+                <Switch
+                  checked={item.attunement}
+                  onCheckedChange={(v) => setItem((x) => ({ ...x, attunement: v, attuned: v ? x.attuned : false }))}
+                  label="Требует настройки"
+                />
+                {item.attunement && <Switch checked={item.attuned} onCheckedChange={(v) => set("attuned", v)} label="Настроен" />}
+              </div>
+              {item.category === "armor" && item.armor && (
+                <div className="rounded-lg border border-line p-3">
+                  <div className="mb-2 text-sm font-semibold">Доспех</div>
+                  <ArmorEditor armor={item.armor} onChange={(a) => set("armor", a)} />
+                </div>
+              )}
+              {item.category === "shield" && (
+                <Field label="Бонус щита к КД" className="max-w-40">
+                  <NumberInput value={item.shieldBonus} min={0} max={20} onCommit={(v) => set("shieldBonus", v)} />
+                </Field>
+              )}
+              {item.category === "weapon" && item.weapon && (
+                <div className="rounded-lg border border-line p-3">
+                  <div className="mb-2 text-sm font-semibold">Оружие</div>
+                  <WeaponEditor weapon={item.weapon} onChange={(w) => set("weapon", w)} />
+                </div>
+              )}
+              <UsesEditor uses={item.charges} onChange={(u) => set("charges", u)} title="Заряды" />
+              <Field label="Ссылка" hint="Например, страница предмета на dnd.su">
+                <Input value={item.link} onChange={(e) => set("link", e.target.value)} placeholder="https://" />
+              </Field>
             </div>
           )}
-          {item.category === "shield" && (
-            <Field label="Бонус щита к КД" className="max-w-40">
-              <NumberInput value={item.shieldBonus} min={0} max={20} onCommit={(v) => set("shieldBonus", v)} />
-            </Field>
+          {tab === "text" && <RichEditor value={item.description} onChange={(doc) => set("description", doc)} minHeight="14rem" autoFocus />}
+          {tab === "effects" && (
+            <EffectsEditor
+              effects={item.effects}
+              onChange={(effects) => set("effects", effects)}
+              showWhen
+              emptyText="Эффекты предмета применяются автоматически: по умолчанию, когда предмет надет (или настроен, если требует настройки)."
+            />
           )}
-          {item.category === "weapon" && item.weapon && (
-            <div className="rounded-lg border border-line p-3">
-              <div className="mb-2 text-sm font-semibold">Оружие</div>
-              <WeaponEditor weapon={item.weapon} onChange={(w) => set("weapon", w)} />
-            </div>
-          )}
-          <UsesEditor uses={item.charges} onChange={(u) => set("charges", u)} title="Заряды" />
-          <Field label="Ссылка" hint="Например, страница предмета на dnd.su">
-            <Input value={item.link} onChange={(e) => set("link", e.target.value)} placeholder="https://" />
-          </Field>
-        </div>
+          {tab === "attacks" && <AttacksEditor attacks={item.attacks} onChange={(a) => set("attacks", a)} />}
+        </ReadOnlyContext>
       )}
-      {tab === "text" && <RichEditor value={item.description} onChange={(doc) => set("description", doc)} minHeight="14rem" autoFocus />}
-      {tab === "effects" && (
-        <EffectsEditor
-          effects={item.effects}
-          onChange={(effects) => set("effects", effects)}
-          showWhen
-          emptyText="Эффекты предмета применяются автоматически: по умолчанию, когда предмет надет (или настроен, если требует настройки)."
-        />
-      )}
-      {tab === "attacks" && <AttacksEditor attacks={item.attacks} onChange={(a) => set("attacks", a)} />}
     </Modal>
   );
 }
@@ -608,15 +715,31 @@ export function AttackDialog({ initial, isNew, onClose }: { initial: Attack; isN
 
 // ------------------------------------------------------------------ counters
 
-export function CounterDialog({ initial, isNew, onClose }: { initial: Counter; isNew: boolean; onClose: () => void }) {
+export function CounterDialog({
+  initial,
+  isNew,
+  onClose,
+  onSubmit,
+}: {
+  initial: Counter;
+  isNew: boolean;
+  onClose: () => void;
+  /** Library mode: hand the result back instead of changing the sheet. */
+  onSubmit?: (next: Counter) => void;
+}) {
   const [c, setC] = useState(initial);
   const change = useChange();
   const ask = useAsk();
   const close = useGuardedClose(initial, c, onClose);
   const set = <K extends keyof Counter>(k: K, v: Counter[K]) => setC((x) => ({ ...x, [k]: v }));
+  const rules = useGrantRules(initial.grant, !!onSubmit);
   const save = () => {
     const name = c.name.trim() || "Счётчик";
     const next = { ...c, name };
+    if (onSubmit) {
+      onSubmit(next);
+      return;
+    }
     change(
       (d) => {
         const idx = d.counters.findIndex((x) => x.id === next.id);
@@ -647,61 +770,66 @@ export function CounterDialog({ initial, isNew, onClose }: { initial: Counter; i
       description="Сухпайки, рубины, стрелы, заряды особенности — что угодно со значением."
       footer={
         <>
-          {!isNew && (
+          {!isNew && !onSubmit && rules.canRemove && (
             <Button variant="danger" onClick={remove} className="mr-auto">
               <Trash2 /> Удалить
             </Button>
           )}
           <Button variant="ghost" onClick={close}>
-            Отмена
+            {rules.canEdit ? "Отмена" : "Закрыть"}
           </Button>
-          <Button variant="primary" onClick={save}>
-            Сохранить
-          </Button>
+          {rules.canEdit && (
+            <Button variant="primary" onClick={save}>
+              Сохранить
+            </Button>
+          )}
         </>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Название" className="sm:col-span-2" hint="В формулах: @counter.название (пробелы заменяются на _)">
-          <Input autoFocus={isNew} value={c.name} onChange={(e) => set("name", e.target.value)} placeholder="Рубины" />
-        </Field>
-        <Field label={isNew ? "Начальное значение" : "Значение"}>
-          <NumberInput value={c.value} integer={false} onCommit={(v) => set("value", v)} />
-        </Field>
-        <Field label="Максимум" hint={c.max ? <FormulaPreview formula={c.max} /> : "Пусто — без ограничения"}>
-          <Input value={c.max} onChange={(e) => set("max", e.target.value)} placeholder="10, PROF, 2*LVL" className="font-mono" />
-        </Field>
-        <Field label="Минимум">
-          <NumberInput value={c.min} integer={false} onCommit={(v) => set("min", v)} />
-        </Field>
-        <Field label="Шаг кнопок ±">
-          <NumberInput value={c.step} min={0} integer={false} onCommit={(v) => set("step", v || 1)} />
-        </Field>
-        <Field label="Восстановление">
-          <Select value={c.reset} onChange={(e) => set("reset", e.target.value as Counter["reset"])} options={REST_OPTIONS} />
-        </Field>
-        {c.reset !== "none" && (
-          <Field label="Сбрасывать к">
-            <Select
-              value={c.resetTo}
-              onChange={(e) => set("resetTo", e.target.value as Counter["resetTo"])}
-              options={[
-                { value: "max", label: "Максимуму" },
-                { value: "min", label: "Минимуму" },
-              ]}
-            />
+      {rules.notice}
+      <ReadOnlyContext value={rules.inputsLocked}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Название" className="sm:col-span-2" hint="В формулах: @counter.название (пробелы заменяются на _)">
+            <Input autoFocus={isNew} value={c.name} onChange={(e) => set("name", e.target.value)} placeholder="Рубины" />
           </Field>
-        )}
-        <Field label="Группа" hint="Счётчики одной группы показываются вместе">
-          <Input value={c.group} onChange={(e) => set("group", e.target.value)} placeholder="Сокровища" />
-        </Field>
-        <div className="flex items-end pb-2">
-          <Switch checked={c.pinned} onCheckedChange={(v) => set("pinned", v)} label="Показывать во вкладке «Бой»" />
+          <Field label={isNew ? "Начальное значение" : "Значение"}>
+            <NumberInput value={c.value} integer={false} onCommit={(v) => set("value", v)} />
+          </Field>
+          <Field label="Максимум" hint={c.max ? <FormulaPreview formula={c.max} /> : "Пусто — без ограничения"}>
+            <Input value={c.max} onChange={(e) => set("max", e.target.value)} placeholder="10, PROF, 2*LVL" className="font-mono" />
+          </Field>
+          <Field label="Минимум">
+            <NumberInput value={c.min} integer={false} onCommit={(v) => set("min", v)} />
+          </Field>
+          <Field label="Шаг кнопок ±">
+            <NumberInput value={c.step} min={0} integer={false} onCommit={(v) => set("step", v || 1)} />
+          </Field>
+          <Field label="Восстановление">
+            <Select value={c.reset} onChange={(e) => set("reset", e.target.value as Counter["reset"])} options={REST_OPTIONS} />
+          </Field>
+          {c.reset !== "none" && (
+            <Field label="Сбрасывать к">
+              <Select
+                value={c.resetTo}
+                onChange={(e) => set("resetTo", e.target.value as Counter["resetTo"])}
+                options={[
+                  { value: "max", label: "Максимуму" },
+                  { value: "min", label: "Минимуму" },
+                ]}
+              />
+            </Field>
+          )}
+          <Field label="Группа" hint="Счётчики одной группы показываются вместе">
+            <Input value={c.group} onChange={(e) => set("group", e.target.value)} placeholder="Сокровища" />
+          </Field>
+          <div className="flex items-end pb-2">
+            <Switch checked={c.pinned} onCheckedChange={(v) => set("pinned", v)} label="Показывать во вкладке «Бой»" />
+          </div>
+          <Field label="Описание" className="sm:col-span-2">
+            <Textarea value={c.description} onChange={(e) => set("description", e.target.value)} rows={2} />
+          </Field>
         </div>
-        <Field label="Описание" className="sm:col-span-2">
-          <Textarea value={c.description} onChange={(e) => set("description", e.target.value)} rows={2} />
-        </Field>
-      </div>
+      </ReadOnlyContext>
     </Modal>
   );
 }

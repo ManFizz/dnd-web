@@ -46,6 +46,7 @@ export function newFeature(partial: Partial<Feature> = {}): Feature {
     uses: null,
     attacks: [],
     tags: [],
+    grant: null,
     ...partial,
   };
 }
@@ -71,6 +72,7 @@ export function newItem(partial: Partial<Item> = {}): Item {
     attacks: [],
     link: "",
     origin: "",
+    grant: null,
     ...partial,
   };
 }
@@ -109,6 +111,7 @@ export function newCounter(partial: Partial<Counter> = {}): Counter {
     color: "",
     pinned: false,
     description: "",
+    grant: null,
     ...partial,
   };
 }

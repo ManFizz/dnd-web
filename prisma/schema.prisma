@@ -105,6 +105,7 @@ model Character {
   updatedAt DateTime           @updatedAt
   events    CharacterEvent[]
   campaign  CampaignCharacter?
+  grants    Grant[]
 
   @@index([ownerId, updatedAt])
 }
@@ -173,8 +174,66 @@ model Campaign {
   members     CampaignMember[]
   invites     CampaignInvite[]
   characters  CampaignCharacter[]
+  /// Party stash: { items: Item[], coins: Record<coin, number> }.
+  stash       Json                @default("{}")
+  templates   CampaignTemplate[]
+  grants      Grant[]
 
   @@index([ownerId])
+}
+
+/// GM library entry: an item, feature (mutation, curse, boon...) or counter
+/// that can be granted to characters.
+model CampaignTemplate {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// item | feature | counter
+  kind       String
+  name       String
+  folder     String   @default("")
+  tags       String[] @default([])
+  /// The object itself, validated by the character schemas.
+  body       Json
+  /// Curse or boon stages: [{ name, effects }].
+  stages     Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  grants     Grant[]
+
+  @@index([campaignId])
+}
+
+/// One delivery of a template (or an ad-hoc object) to one character.
+model Grant {
+  id          String            @id @default(cuid())
+  campaignId  String
+  campaign    Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  characterId String
+  character   Character         @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  templateId  String?
+  template    CampaignTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// item | feature | counter
+  kind        String
+  name        String
+  /// Snapshot of the granted object as it was sent.
+  payload     Json
+  stages      Json              @default("[]")
+  /// offered | active | removed | declined | detached
+  status      String            @default("active")
+  lock        String            @default("none")
+  visibility  String            @default("visible")
+  expires     String            @default("never")
+  left        Int               @default(0)
+  removal     String            @default("")
+  reason      String            @default("")
+  createdById String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([campaignId, status])
+  @@index([characterId, status])
+  @@index([templateId])
 }
 
 model CampaignMember {

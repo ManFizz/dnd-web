@@ -156,13 +156,20 @@ export type PartyCharacter = {
   doc: unknown;
 };
 
+/** Parts of a campaign that reload on their own when they change. */
+export const CAMPAIGN_SCOPES = ["library", "grants", "stash", "loot", "encounter", "sessions", "handouts", "shop", "maps", "bestiary"] as const;
+export type CampaignScope = (typeof CAMPAIGN_SCOPES)[number];
+
 /** Messages sent over the campaign event stream. Payloads carry ids only. */
 export type CampaignEvent =
   | { type: "character"; campaignId: string; characterId: string; version: number }
   | { type: "members"; campaignId: string }
   | { type: "characters"; campaignId: string }
   | { type: "campaign"; campaignId: string }
-  | { type: "deleted"; campaignId: string };
+  | { type: "deleted"; campaignId: string }
+  | { type: "scope"; campaignId: string; scope: CampaignScope; id?: string }
+  /** Short message for the table, e.g. "Виталя настроился на проклятый меч". */
+  | { type: "notice"; campaignId: string; text: string; gmOnly: boolean; /** Only this user (and the GMs) get it. */ to?: string };
 
 /** What a person sees when they open an invite link. */
 export type InvitePreview = {

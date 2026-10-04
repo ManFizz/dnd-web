@@ -14,6 +14,7 @@ import { Tip } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
 import { useOpenDialog } from "../dialogs-context";
 import { effectSummary } from "../effects";
+import { GrantBadge, MaskedText, useGrantView } from "../grant-badge";
 import { makeEvent, useChange, useComputed, useDoc } from "../store";
 
 export function ItemCharges({ item }: { item: Item }) {
@@ -124,19 +125,28 @@ function ItemRow({ item }: { item: Item }) {
       makeEvent("item", `«${item.name}»: количество ${item.quantity} → ${Math.max(0, qty)}`),
     );
   const activeEffects = item.effects.filter((e) => e.enabled);
+  const view = useGrantView(item.grant);
+  const isOn = item.attunement ? item.attuned : item.equipped;
+  // A cursed item stays on once it is on (the GM is told when it happens).
+  const stuck = !!item.grant?.cursed && isOn;
+  if (view.hidden) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-3 py-2 last:border-b-0">
-      <Tip content={item.equipped ? "Надет / в руках" : "Не надет"}>
+      <Tip content={stuck && item.equipped ? "Снять не получается" : item.equipped ? "Надет / в руках" : "Не надет"}>
         <div>
-          <Switch checked={item.equipped} onCheckedChange={(v) => toggle("equipped", v)} />
+          <Switch checked={item.equipped} disabled={stuck && item.equipped && !item.attunement} onCheckedChange={(v) => toggle("equipped", v)} />
         </div>
       </Tip>
       <button type="button" className="min-w-40 flex-1 text-left" onClick={() => open({ kind: "item", item })}>
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-medium hover:text-accent">{item.name || "Предмет"}</span>
-          {item.rarity && <Badge tone={RARITY_TONES[item.rarity]}>{RARITY_LABELS[item.rarity]}</Badge>}
+          {item.rarity && !view.masked && <Badge tone={RARITY_TONES[item.rarity]}>{RARITY_LABELS[item.rarity]}</Badge>}
+          <GrantBadge grant={item.grant} />
           {item.link && <Link2 className="size-3 text-faint" />}
         </div>
+        {view.masked ? (
+          <MaskedText />
+        ) : (
         <div className="flex flex-wrap gap-1 text-xs text-muted">
           <span>{ITEM_CATEGORY_LABELS[item.category]}</span>
           {item.armor && <span>· КД {item.armor.base}</span>}
@@ -148,11 +158,13 @@ function ItemRow({ item }: { item: Item }) {
           ))}
           {activeEffects.length > 3 && <span>+{activeEffects.length - 3}</span>}
         </div>
+        )}
       </button>
       {item.attunement && (
         <Tip content={item.attuned ? "Настроен (нажмите, чтобы снять настройку)" : "Требует настройки"}>
           <button
             type="button"
+            disabled={stuck && item.attuned}
             onClick={() => toggle("attuned", !item.attuned)}
             className={cn("flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs", item.attuned ? "bg-magic-soft text-magic" : "text-faint hover:text-text")}
           >

@@ -77,9 +77,44 @@ export const AttackSchema = z.object({
 });
 export type Attack = z.infer<typeof AttackSchema>;
 
-export const FEATURE_KINDS = ["race", "class", "background", "feat", "mutation", "boon", "other"] as const;
+export const FEATURE_KINDS = ["race", "class", "background", "feat", "mutation", "boon", "curse", "other"] as const;
 export const FeatureKindSchema = z.enum(FEATURE_KINDS);
 export type FeatureKind = z.infer<typeof FeatureKindSchema>;
+
+export const GRANT_LOCKS = ["none", "noedit", "noremove"] as const;
+export const GRANT_VISIBILITY = ["visible", "masked", "hidden"] as const;
+export const GRANT_EXPIRY = ["never", "rounds", "short", "long", "days", "session"] as const;
+export type GrantLock = (typeof GRANT_LOCKS)[number];
+export type GrantVisibility = (typeof GRANT_VISIBILITY)[number];
+export type GrantExpiry = (typeof GRANT_EXPIRY)[number];
+
+/**
+ * Marks an entry that the GM gave through a campaign grant. The Grant row on
+ * the server is the source of truth; this copy lets the sheet show the lock,
+ * the visibility and the timer without another request.
+ */
+export const GrantMarkSchema = z.object({
+  id,
+  campaignId: z.string().max(80).default(""),
+  /** none: player may do anything; noedit: may not change it; noremove: may not remove it either. */
+  lock: z.enum(GRANT_LOCKS).default("none"),
+  /** masked: name shown, properties hidden ("???"); hidden: not listed at all, effects still apply. */
+  visibility: z.enum(GRANT_VISIBILITY).default("visible"),
+  expires: z.enum(GRANT_EXPIRY).default("never"),
+  /** Rounds or long rests left for "rounds" and "days". */
+  left: z.number().int().min(0).max(100000).default(0),
+  /** How to get rid of it, shown to the player. */
+  removal: shortText(500),
+  reason: shortText(300),
+  /** Cursed item: once equipped or attuned it cannot be taken off. */
+  cursed: z.boolean().default(false),
+  /** Curse or boon stage, 0 = first; stages = number of stages (0 = no stages). */
+  stage: z.number().int().min(0).max(50).default(0),
+  stages: z.number().int().min(0).max(50).default(0),
+  /** When the curse acts ("при длинном отдыхе: спасбросок ТЕЛ 15"), free text. */
+  triggers: shortText(500),
+});
+export type GrantMark = z.infer<typeof GrantMarkSchema>;
 
 export const FeatureSchema = z.object({
   id,
@@ -97,6 +132,7 @@ export const FeatureSchema = z.object({
   uses: UsesSchema.nullable().default(null),
   attacks: z.array(AttackSchema).max(50).default([]),
   tags: z.array(z.string().max(50)).max(30).default([]),
+  grant: GrantMarkSchema.nullable().default(null),
 });
 export type Feature = z.infer<typeof FeatureSchema>;
 
@@ -162,6 +198,7 @@ export const ItemSchema = z.object({
   link: z.string().max(500).default(""),
   /** Where the item came from ("награда за квест"), shown in the journal. */
   origin: shortText(200),
+  grant: GrantMarkSchema.nullable().default(null),
 });
 export type Item = z.infer<typeof ItemSchema>;
 
@@ -179,6 +216,7 @@ export const CounterSchema = z.object({
   color: shortText(20),
   pinned: z.boolean().default(false),
   description: shortText(2000),
+  grant: GrantMarkSchema.nullable().default(null),
 });
 export type Counter = z.infer<typeof CounterSchema>;
 

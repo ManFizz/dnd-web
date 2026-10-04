@@ -1,4 +1,4 @@
-import type { CampaignEvent } from "@/lib/campaigns";
+import { isGmRole, type CampaignEvent } from "@/lib/campaigns";
 import { requireMember } from "@/lib/server/campaigns";
 import { handler, requireApiUser } from "@/lib/server/http";
 import { subscribe } from "@/lib/server/realtime";
@@ -12,7 +12,8 @@ const PING_MS = 15_000;
 export const GET = handler(async (req: Request, ctx: RouteContext<"/api/campaigns/[id]/stream">) => {
   const user = await requireApiUser(req);
   const { id } = await ctx.params;
-  await requireMember(id, user.id, { allowPending: true });
+  const member = await requireMember(id, user.id, { allowPending: true });
+  const gm = isGmRole(member.role) && member.status === "active";
 
   const encoder = new TextEncoder();
   let cleanup = () => {};
@@ -27,7 +28,13 @@ export const GET = handler(async (req: Request, ctx: RouteContext<"/api/campaign
           cleanup();
         }
       };
-      const unsubscribe = await subscribe(id, (event: CampaignEvent) => send(`data: ${JSON.stringify(event)}\n\n`));
+      const unsubscribe = await subscribe(id, (event: CampaignEvent) => {
+        // GM-only notices never reach players.
+        if (event.type === "notice" && event.gmOnly && !gm) return;
+        // Personal notices (an offer to one player) skip the other players.
+        if (event.type === "notice" && event.to && event.to !== user.id && !gm) return;
+        send(`data: ${JSON.stringify(event)}\n\n`);
+      });
       const ping = setInterval(() => send(": ping\n\n"), PING_MS);
       cleanup = () => {
         if (closed) return;

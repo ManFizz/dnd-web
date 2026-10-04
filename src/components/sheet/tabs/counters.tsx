@@ -8,6 +8,7 @@ import { Empty, Panel } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
 import { cn } from "@/lib/cn";
+import { GrantBadge, useGrantView } from "../grant-badge";
 import { useOpenDialog } from "../dialogs-context";
 import { UsesControl } from "../feature-list";
 import { ItemCharges } from "./inventory";
@@ -24,6 +25,7 @@ export function CounterCard({ counter }: { counter: Counter }) {
   const open = useOpenDialog();
   const max = sheet.counters[counter.id]?.value ?? null;
   const maxError = sheet.counters[counter.id]?.error;
+  const view = useGrantView(counter.grant);
 
   const apply = (delta: number, reason: string) => {
     const cur = api.getState().doc.counters.find((c) => c.id === counter.id);
@@ -57,6 +59,7 @@ export function CounterCard({ counter }: { counter: Counter }) {
   };
 
   const pct = max ? Math.max(0, Math.min(1, counter.value / max)) : null;
+  if (view.hidden) return null;
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3">
       <div className="flex items-start justify-between gap-2">
@@ -64,6 +67,7 @@ export function CounterCard({ counter }: { counter: Counter }) {
           <div className="flex items-center gap-1.5 font-medium">
             <span className="truncate">{counter.name || "Счётчик"}</span>
             {counter.pinned && <Pin className="size-3 shrink-0 text-faint" />}
+            <GrantBadge grant={counter.grant} />
           </div>
           <div className="text-xs text-faint">
             {counter.reset !== "none" ? `${REST_LABELS[counter.reset]} → ${counter.resetTo === "max" ? "максимум" : "минимум"}` : "Вручную"}

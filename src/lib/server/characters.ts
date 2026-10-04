@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { CharacterEventInputSchema, type CharacterEventInput, type CharacterEventRow } from "@/lib/events";
+import { checkPlayerSave, GrantRuleError } from "@/lib/rules/grant-rules";
 import { CharacterDocSchema, type CharacterDoc } from "@/lib/rules/schema";
 import { Prisma } from "@/generated/prisma/client";
 import { announceCharacterSaved, gmCampaignFor } from "./campaigns";
@@ -31,10 +32,14 @@ export async function listCharacters(userId: string) {
  * Who may read a character: its owner, or the GM (and co-GMs) of the campaign it is in.
  * Only the owner may change it.
  */
-export type CharacterAccess = { kind: "owner" } | { kind: "gm"; campaignId: string };
+/** Owner (campaignId of the campaign the sheet is in, if any) or the GM of that campaign. */
+export type CharacterAccess = { kind: "owner"; campaignId: string | null } | { kind: "gm"; campaignId: string };
 
 async function readAccess(ownerId: string, characterId: string, userId: string): Promise<CharacterAccess | null> {
-  if (ownerId === userId) return { kind: "owner" };
+  if (ownerId === userId) {
+    const link = await prisma.campaignCharacter.findUnique({ where: { characterId }, select: { campaignId: true, status: true } });
+    return { kind: "owner", campaignId: link && link.status === "accepted" ? link.campaignId : null };
+  }
   const campaignId = await gmCampaignFor(characterId, userId);
   return campaignId ? { kind: "gm", campaignId } : null;
 }
@@ -48,7 +53,7 @@ export async function getCharacter(id: string, userId: string) {
   return { id: row.id, version: row.version, doc: parsed.data, updatedAt: row.updatedAt.toISOString(), access };
 }
 
-function eventRows(characterId: string, userId: string, events: CharacterEventInput[]) {
+export function eventRows(characterId: string, userId: string | null, events: CharacterEventInput[]) {
   return events.map((e) => {
     const ev = CharacterEventInputSchema.parse(e);
     const at = ev.at ? new Date(ev.at) : new Date();
@@ -88,7 +93,25 @@ export const SaveCharacterSchema = z.object({
 });
 
 export async function saveCharacter(id: string, userId: string, input: z.infer<typeof SaveCharacterSchema>) {
+  let notices: string[] = [];
+  let campaignId: string | null = null;
   const saved = await prisma.$transaction(async (tx) => {
+    const current = await tx.character.findUnique({ where: { id }, select: { ownerId: true, version: true, data: true, name: true } });
+    if (!current || current.ownerId !== userId) throw new HttpError(404, "Персонаж не найден");
+    if (current.version !== input.baseVersion) throw new HttpError(409, "Персонаж изменён в другом окне", { version: current.version });
+    // GM grants: locks are checked against the saved version, marks come from it.
+    const prev = CharacterDocSchema.safeParse(current.data);
+    let removed: string[] = [];
+    if (prev.success) {
+      try {
+        const check = checkPlayerSave(prev.data, input.doc, input.doc.name || current.name);
+        removed = check.removed;
+        notices = check.notices;
+      } catch (e) {
+        if (e instanceof GrantRuleError) throw new HttpError(403, e.message);
+        throw e;
+      }
+    }
     const updated = await tx.character.updateMany({
       where: { id, ownerId: userId, version: input.baseVersion },
       data: {
@@ -99,16 +122,21 @@ export async function saveCharacter(id: string, userId: string, input: z.infer<t
         version: { increment: 1 },
       },
     });
-    if (updated.count === 0) {
-      const exists = await tx.character.findUnique({ where: { id }, select: { ownerId: true, version: true } });
-      if (!exists || exists.ownerId !== userId) throw new HttpError(404, "Персонаж не найден");
-      throw new HttpError(409, "Персонаж изменён в другом окне", { version: exists.version });
-    }
+    if (updated.count === 0) throw new HttpError(409, "Персонаж изменён в другом окне");
+    if (removed.length) await tx.grant.updateMany({ where: { id: { in: removed }, characterId: id, status: "active" }, data: { status: "removed" } });
     if (input.events.length) await tx.characterEvent.createMany({ data: eventRows(id, userId, input.events) });
-    return { version: input.baseVersion + 1 };
+    if (removed.length || notices.length) {
+      const link = await tx.campaignCharacter.findUnique({ where: { characterId: id }, select: { campaignId: true } });
+      campaignId = link?.campaignId ?? null;
+    }
+    return { version: input.baseVersion + 1, removed: removed.length };
   });
   await announceCharacterSaved(id, saved.version);
-  return saved;
+  if (campaignId) {
+    if (saved.removed) await publish({ type: "scope", campaignId, scope: "grants" });
+    for (const text of notices) await publish({ type: "notice", campaignId, text, gmOnly: true });
+  }
+  return { version: saved.version };
 }
 
 export async function deleteCharacter(id: string, userId: string) {
