@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "zustand";
+import { CharacterDocSchema } from "@/lib/rules/schema";
+import { useCampaignStream } from "@/components/campaigns/use-campaign-stream";
+import { ReadOnlyContext } from "@/components/ui/read-only";
 import { computeSheet } from "@/lib/rules/compute";
 import type { CharacterDoc } from "@/lib/rules/schema";
 import type { LibrarySpell } from "@/lib/spells";
@@ -11,20 +14,43 @@ export function SheetProvider({
   initial,
   children,
 }: {
-  initial: { id: string; doc: CharacterDoc; version: number };
+  initial: { id: string; doc: CharacterDoc; version: number; readOnly?: boolean; campaignId?: string | null };
   children: React.ReactNode;
 }) {
   const [store] = useState(() => createSheetStore(initial));
   useAutosave(store);
   useSpellLibrary(store);
   useUndoShortcuts(store);
+  useLiveView(store);
   const doc = useStore(store, (s) => s.doc);
+  const readOnly = useStore(store, (s) => s.readOnly);
   const computed = useMemo(() => computeSheet(doc), [doc]);
   return (
     <SheetStoreContext value={store}>
-      <ComputedContext value={computed}>{children}</ComputedContext>
+      <ReadOnlyContext value={readOnly}>
+        <ComputedContext value={computed}>{children}</ComputedContext>
+      </ReadOnlyContext>
     </SheetStoreContext>
   );
+}
+
+/** Read-only view: follows the player's saves through the campaign stream. */
+function useLiveView(store: SheetStore) {
+  const { readOnly, campaignId, id } = store.getState();
+  const reload = async () => {
+    const res = await fetch(`/api/characters/${id}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = (await res.json()) as { doc: unknown; version: number };
+    const parsed = CharacterDocSchema.safeParse(data.doc);
+    if (parsed.success && data.version !== store.getState().version) store.getState().replace(parsed.data, data.version);
+  };
+  useCampaignStream(readOnly ? campaignId : null, (event) => {
+    if (event.type === "resync" || (event.type === "character" && event.characterId === id && event.version !== store.getState().version)) {
+      reload().catch(() => {
+        // The next save event retries.
+      });
+    }
+  });
 }
 
 async function errorMessage(res: Response): Promise<string> {
@@ -51,7 +77,7 @@ function useAutosave(store: SheetStore) {
     const run = async () => {
       timer = null;
       const s = store.getState();
-      if (running || !s.dirty || s.status === "conflict") return;
+      if (running || s.readOnly || !s.dirty || s.status === "conflict") return;
       running = true;
       const doc = s.doc;
       const events = s.pending;

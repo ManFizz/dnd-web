@@ -2,6 +2,7 @@
 
 import { produce, type Draft } from "immer";
 import { createContext, use } from "react";
+import { toast } from "sonner";
 import { createStore, useStore, type StoreApi } from "zustand";
 import type { CharacterEventInput } from "@/lib/events";
 import type { Sheet } from "@/lib/rules/compute";
@@ -26,6 +27,10 @@ type HistoryEntry = { doc: CharacterDoc; events: CharacterEventInput[]; label: s
 
 type SheetData = {
   id: string;
+  /** View-only sheet (the GM looking at a player's character): changes are ignored. */
+  readOnly: boolean;
+  /** Campaign the viewer came from when the sheet is read-only. */
+  campaignId: string | null;
   doc: CharacterDoc;
   version: number;
   /** Journal entries that are not saved yet. */
@@ -68,7 +73,22 @@ export function makeEvent(kind: string, summary: string, reason = "", data?: unk
 
 const asList = (e?: CharacterEventInput | CharacterEventInput[]) => (e ? (Array.isArray(e) ? e : [e]) : []);
 
-export function createSheetStore(init: { id: string; doc: CharacterDoc; version: number }): SheetStore {
+let lastReadOnlyWarning = 0;
+
+function warnReadOnly() {
+  const now = Date.now();
+  if (now - lastReadOnlyWarning < 3000) return;
+  lastReadOnlyWarning = now;
+  toast.info("Это просмотр: лист меняет только игрок");
+}
+
+export function createSheetStore(init: { id: string; doc: CharacterDoc; version: number; readOnly?: boolean; campaignId?: string | null }): SheetStore {
+  const readOnly = init.readOnly ?? false;
+  /** True (with a warning) when the sheet must not change. */
+  const blocked = () => {
+    if (readOnly) warnReadOnly();
+    return readOnly;
+  };
   return createStore<SheetData & SheetActions>()((set, get) => {
     const markDirty = (s: SheetData) => ({
       dirty: true,
@@ -76,6 +96,8 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
     });
     return {
       id: init.id,
+      readOnly,
+      campaignId: init.campaignId ?? null,
       doc: init.doc,
       version: init.version,
       pending: [],
@@ -91,6 +113,7 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       rolls: [],
 
       change(recipe, events) {
+        if (blocked()) return;
         const s = get();
         const next = produce(s.doc, recipe);
         const evs = asList(events);
@@ -105,11 +128,13 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       },
 
       log(event) {
+        if (blocked()) return;
         const s = get();
         set({ pending: [...s.pending, event], ...markDirty(s) });
       },
 
       undo() {
+        if (blocked()) return;
         const s = get();
         const entry = s.past[s.past.length - 1];
         if (!entry) return;
@@ -127,6 +152,7 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       },
 
       redo() {
+        if (blocked()) return;
         const s = get();
         const entry = s.future[0];
         if (!entry) return;

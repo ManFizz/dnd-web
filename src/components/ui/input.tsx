@@ -3,17 +3,21 @@
 import { Switch as RadixSwitch } from "radix-ui";
 import { cloneElement, isValidElement, useId, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useReadOnly } from "./read-only";
 
 export const inputClass =
   "w-full rounded-lg border border-line bg-panel-2 px-3 text-sm text-text placeholder:text-faint transition-colors " +
   "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50 aria-invalid:border-danger";
 
 export function Input({ className, ...props }: React.ComponentProps<"input">) {
-  return <input className={cn(inputClass, "h-9", className)} {...props} />;
+  // Search fields stay usable on read-only screens.
+  const readOnly = useReadOnly() && props.type !== "search";
+  return <input className={cn(inputClass, "h-9 [&::-webkit-search-cancel-button]:appearance-none", className)} {...props} readOnly={props.readOnly || readOnly} />;
 }
 
 export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
-  return <textarea className={cn(inputClass, "min-h-20 py-2 leading-relaxed [field-sizing:content]", className)} {...props} />;
+  const readOnly = useReadOnly();
+  return <textarea readOnly={readOnly} className={cn(inputClass, "min-h-20 py-2 leading-relaxed [field-sizing:content]", className)} {...props} />;
 }
 
 export type Option = { value: string; label: string; group?: string; disabled?: boolean };
@@ -24,13 +28,14 @@ export function Select({
   placeholder,
   ...props
 }: Omit<React.ComponentProps<"select">, "children"> & { options: Option[]; placeholder?: string }) {
+  const readOnly = useReadOnly();
   const groups = new Map<string, Option[]>();
   for (const o of options) {
     const g = o.group ?? "";
     groups.set(g, [...(groups.get(g) ?? []), o]);
   }
   return (
-    <select className={cn(inputClass, "h-9 cursor-pointer pr-8", className)} {...props}>
+    <select className={cn(inputClass, "h-9 cursor-pointer pr-8", className)} {...props} disabled={props.disabled || readOnly}>
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {[...groups.entries()].map(([group, opts]) =>
         group ? (
@@ -59,9 +64,10 @@ export function Checkbox({
   ...props
 }: Omit<React.ComponentProps<"input">, "type"> & { label?: React.ReactNode }) {
   const id = useId();
+  const readOnly = useReadOnly();
   return (
     <label htmlFor={props.id ?? id} className={cn("inline-flex cursor-pointer items-center gap-2 text-sm select-none", className)}>
-      <input id={props.id ?? id} type="checkbox" className="size-4 cursor-pointer accent-[var(--accent)]" {...props} />
+      <input id={props.id ?? id} type="checkbox" className="size-4 cursor-pointer accent-[var(--accent)]" {...props} disabled={props.disabled || readOnly} />
       {label}
     </label>
   );
@@ -81,13 +87,14 @@ export function Switch({
   className?: string;
 }) {
   const id = useId();
+  const readOnly = useReadOnly();
   return (
     <div className={cn("inline-flex items-center gap-2", className)}>
       <RadixSwitch.Root
         id={id}
         checked={checked}
         onCheckedChange={onCheckedChange}
-        disabled={disabled}
+        disabled={disabled || readOnly}
         className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-line bg-panel-3 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:opacity-50"
       >
         <RadixSwitch.Thumb className="block size-4 translate-x-0.5 rounded-full bg-text shadow transition-transform data-[state=checked]:translate-x-4 data-[state=checked]:bg-accent-ink" />
@@ -161,6 +168,7 @@ export function CommitInput({
 }) {
   const [draft, setDraft] = useState(value);
   const [editing, setEditing] = useState(false);
+  const readOnly = useReadOnly();
   const shown = editing ? draft : value;
   const commit = () => {
     setEditing(false);
@@ -168,6 +176,7 @@ export function CommitInput({
   };
   const common = {
     value: shown,
+    readOnly: readOnly || undefined,
     onFocus: () => {
       setDraft(value);
       setEditing(true);
@@ -243,6 +252,7 @@ export function NumberInput({
 }) {
   const [draft, setDraft] = useState(String(value));
   const [editing, setEditing] = useState(false);
+  const readOnly = useReadOnly();
   const commit = () => {
     setEditing(false);
     const s = draft.trim().replace(/[−–]/g, "-");
@@ -259,6 +269,7 @@ export function NumberInput({
     <input
       inputMode={integer ? "numeric" : "decimal"}
       {...props}
+      readOnly={props.readOnly || readOnly}
       value={editing ? draft : String(value)}
       onFocus={(e) => {
         setDraft(String(value));

@@ -27,6 +27,7 @@ import { cn } from "@/lib/cn";
 import type { RichDoc } from "@/lib/rules/richtext";
 import { Menu } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
+import { useReadOnly } from "@/components/ui/read-only";
 import { FormulaChip } from "./view";
 
 function FormulaView({ node, updateAttributes, selected, deleteNode }: NodeViewProps) {
@@ -274,6 +275,7 @@ export function RichEditor({
   const onChangeRef = useRef(onChange);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSent = useRef<string>(JSON.stringify(value ?? EMPTY));
+  const readOnly = useReadOnly();
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -293,6 +295,7 @@ export function RichEditor({
     extensions: extensions(placeholder),
     content: value ?? EMPTY,
     immediatelyRender: false,
+    editable: !readOnly,
     autofocus: autoFocus ? "end" : false,
     editorProps: {
       attributes: { class: "rich text-sm px-3 py-2.5 focus:outline-none", style: `min-height:${minHeight}` },
@@ -323,7 +326,7 @@ export function RichEditor({
 
   return (
     <div className={cn("overflow-hidden rounded-lg border border-line bg-panel-2 focus-within:border-accent", className)}>
-      {editor ? <Toolbar editor={editor} /> : <div className="h-9 border-b border-line" />}
+      {readOnly ? null : editor ? <Toolbar editor={editor} /> : <div className="h-9 border-b border-line" />}
       <EditorContent editor={editor} />
     </div>
   );

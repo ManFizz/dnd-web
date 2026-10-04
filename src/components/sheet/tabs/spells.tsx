@@ -500,7 +500,7 @@ export function SpellsTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Найти в списке" className="pl-9" />
+          <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Найти в списке" className="pl-9" />
         </div>
         <Segmented
           value={filter}
