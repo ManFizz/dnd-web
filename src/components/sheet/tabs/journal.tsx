@@ -134,6 +134,7 @@ export function JournalTab() {
         <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-faint" />
           <Input
+            type="search"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Поиск: «рубин», «урон», «за квест»…"

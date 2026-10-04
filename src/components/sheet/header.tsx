@@ -7,6 +7,7 @@ import {
   CloudOff,
   Dices,
   Download,
+  Eye,
   History,
   ImagePlus,
   Loader2,
@@ -30,7 +31,7 @@ import { XP_BY_LEVEL } from "@/lib/rules/constants";
 import { STAT_INFO } from "@/lib/rules/glossary";
 import { Button } from "@/components/ui/button";
 import { CommitInput, Input } from "@/components/ui/input";
-import { Menu, Popover, Tip } from "@/components/ui/overlay";
+import { Menu, Popover, Tip, type MenuItem } from "@/components/ui/overlay";
 import { AvatarImage } from "@/components/ui/avatar-image";
 import { useAsk } from "@/components/ui/prompt";
 import { useTheme } from "@/components/theme";
@@ -199,12 +200,20 @@ async function resizeImage(file: File, size = 256): Promise<string> {
 function Avatar() {
   const doc = useDoc();
   const change = useChange();
+  const readOnly = useSheet((s) => s.readOnly);
   const fileRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState("");
   const set = (avatarUrl: string, summary: string) =>
     change((d) => {
       d.avatarUrl = avatarUrl;
     }, makeEvent("edit", summary));
+  if (readOnly) {
+    return (
+      <div className="relative size-14 shrink-0 overflow-hidden rounded-xl border border-line bg-panel-2 sm:size-16">
+        <AvatarImage src={doc.avatarUrl} className="size-full object-cover" fallback={<UserRound className="m-auto size-7 text-faint" />} />
+      </div>
+    );
+  }
   return (
     <Popover
       trigger={
@@ -260,6 +269,7 @@ function XpBar() {
   const change = useChange();
   const ask = useAsk();
   const open = useOpenDialog();
+  const readOnly = useSheet((s) => s.readOnly);
   const level = sheet.level;
   const xp = doc.info.xp;
   const next = XP_BY_LEVEL[Math.min(20, level + 1)] ?? null;
@@ -275,7 +285,7 @@ function XpBar() {
           До {level + 1} уровня: {Math.max(0, next - xp).toLocaleString("ru")} XP
         </div>
       )}
-      <div className="mt-1 text-faint">Нажмите, чтобы добавить опыт</div>
+      {!readOnly && <div className="mt-1 text-faint">Нажмите, чтобы добавить опыт</div>}
     </>
   );
   return (
@@ -283,8 +293,9 @@ function XpBar() {
       <Tip content={tip} side="bottom">
         <button
           type="button"
-          className="group flex min-w-0 flex-1 flex-col gap-1 text-left"
+          className="group flex min-w-0 flex-1 flex-col gap-1 text-left disabled:cursor-default"
           aria-label="Добавить опыт"
+          disabled={readOnly}
           onClick={async () => {
             const r = await ask.amount({ title: "Опыт", direction: "gain", requireReason: doc.settings.requireReasons, unit: "XP" });
             if (!r) return;
@@ -313,7 +324,7 @@ function XpBar() {
           </div>
         </button>
       </Tip>
-      {canLevel && (
+      {canLevel && !readOnly && (
         <Tip content="Опыта хватает: выберите класс, который получит уровень">
           <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-good" onClick={() => open({ kind: "level-up" })}>
             <ArrowUpCircle /> Уровень
@@ -333,6 +344,8 @@ export function SheetHeader({ onTab, onPanel }: { onTab: (tab: string) => void; 
   const canUndo = useSheet((s) => s.past.length > 0);
   const canRedo = useSheet((s) => s.future.length > 0);
   const id = useSheet((s) => s.id);
+  const readOnly = useSheet((s) => s.readOnly);
+  const campaignId = useSheet((s) => s.campaignId);
   const ask = useAsk();
   const router = useRouter();
   const api = useSheetApi();
@@ -344,8 +357,8 @@ export function SheetHeader({ onTab, onPanel }: { onTab: (tab: string) => void; 
   return (
     <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-        <Button asChild size="icon" variant="ghost" aria-label="К списку персонажей" title="К списку персонажей">
-          <Link href="/characters">
+        <Button asChild size="icon" variant="ghost" aria-label={readOnly ? "К кампании" : "К списку персонажей"} title={readOnly ? "К кампании" : "К списку персонажей"}>
+          <Link href={readOnly && campaignId ? `/campaigns/${campaignId}` : "/characters"}>
             <ArrowLeft />
           </Link>
         </Button>
@@ -379,21 +392,32 @@ export function SheetHeader({ onTab, onPanel }: { onTab: (tab: string) => void; 
       <div className="flex items-center justify-between gap-3 sm:justify-end">
         {!doc.settings.hidden.includes("info.xp") && <XpBar />}
         <div className="ml-auto flex items-center gap-1">
-          <SaveIndicator />
-          <Tip content="Отменить последнее изменение (Ctrl+Z)">
-            <span className="inline-flex">
-              <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo} aria-label="Отменить">
-                <Undo2 />
-              </Button>
-            </span>
-          </Tip>
-          <Tip content="Вернуть отменённое (Ctrl+Shift+Z)">
-            <span className="inline-flex">
-              <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo} aria-label="Повторить">
-                <Redo2 />
-              </Button>
-            </span>
-          </Tip>
+          {readOnly ? (
+            <Tip content="Вы ГМ этой кампании и видите лист игрока. Менять его может только сам игрок; изменения появляются здесь сразу после сохранения.">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-info-soft px-2 py-1 text-xs font-medium text-info">
+                <Eye className="size-4" />
+                <span className="hidden sm:inline">Просмотр ГМа</span>
+              </span>
+            </Tip>
+          ) : (
+            <>
+              <SaveIndicator />
+              <Tip content="Отменить последнее изменение (Ctrl+Z)">
+                <span className="inline-flex">
+                  <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo} aria-label="Отменить">
+                    <Undo2 />
+                  </Button>
+                </span>
+              </Tip>
+              <Tip content="Вернуть отменённое (Ctrl+Shift+Z)">
+                <span className="inline-flex">
+                  <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo} aria-label="Повторить">
+                    <Redo2 />
+                  </Button>
+                </span>
+              </Tip>
+            </>
+          )}
           <RollHistory />
           <Tip content="Журнал изменений: что, когда и за что менялось. С поиском">
             <Button size="icon" variant="ghost" aria-label="Журнал" onClick={() => onPanel("journal")} className="max-sm:hidden">
@@ -436,24 +460,28 @@ export function SheetHeader({ onTab, onPanel }: { onTab: (tab: string) => void; 
                 icon: theme === "dark" ? <Sun /> : <Moon />,
                 onSelect: () => setTheme(theme === "dark" ? "light" : "dark"),
               },
-              "separator",
-              {
-                label: "Удалить персонажа",
-                icon: <Trash2 />,
-                danger: true,
-                onSelect: async () => {
-                  const ok = await ask.confirm({
-                    title: `Удалить «${doc.name}»?`,
-                    description: "Персонаж и его журнал будут удалены без возможности восстановления. Можно сначала скачать JSON.",
-                    confirmLabel: "Удалить навсегда",
-                    danger: true,
-                  });
-                  if (!ok) return;
-                  const res = await fetch(`/api/characters/${id}`, { method: "DELETE" });
-                  if (!res.ok) return toast.error("Не удалось удалить");
-                  router.push("/characters");
-                },
-              },
+              ...(readOnly
+                ? []
+                : ([
+                    "separator",
+                    {
+                      label: "Удалить персонажа",
+                      icon: <Trash2 />,
+                      danger: true,
+                      onSelect: async () => {
+                        const ok = await ask.confirm({
+                          title: `Удалить «${doc.name}»?`,
+                          description: "Персонаж и его журнал будут удалены без возможности восстановления. Можно сначала скачать JSON.",
+                          confirmLabel: "Удалить навсегда",
+                          danger: true,
+                        });
+                        if (!ok) return;
+                        const res = await fetch(`/api/characters/${id}`, { method: "DELETE" });
+                        if (!res.ok) return toast.error("Не удалось удалить");
+                        router.push("/characters");
+                      },
+                    },
+                  ] as MenuItem[])),
             ]}
           />
         </div>
