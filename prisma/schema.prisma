@@ -182,6 +182,11 @@ model Campaign {
   lootTables  LootTable[]
   lootDrafts  LootDraft[]
   mutations   MutationDraft[]
+  encounters  Encounter[]
+  sessions    GameSession[]
+  handouts    Handout[]
+  files       CampaignFile[]
+  shops       Shop[]
 
   @@index([ownerId])
 }
@@ -378,4 +383,101 @@ model MutationDraft {
   updatedAt   DateTime @updatedAt
 
   @@index([campaignId, status])
+}
+
+/// A fight: initiative order of characters and monsters (src/lib/encounter.ts).
+model Encounter {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name       String
+  /// prep | active | done
+  status     String   @default("prep")
+  round      Int      @default(0)
+  /// Index in the initiative order of whose turn it is.
+  turn       Int      @default(0)
+  combatants Json     @default("[]")
+  log        Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([campaignId, status])
+}
+
+/// A game night: plan, who came, the recap and the rewards.
+model GameSession {
+  id         String    @id @default(cuid())
+  campaignId String
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  number     Int
+  title      String    @default("")
+  plannedAt  DateTime?
+  /// planned | active | done
+  status     String    @default("planned")
+  /// Character ids that took part.
+  attendance String[]
+  /// GM's private plan.
+  plan       String    @default("")
+  /// Recap for everyone.
+  report     String    @default("")
+  /// { xp, reason, coins } handed out at the end.
+  rewards    Json?
+  startedAt  DateTime?
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([campaignId])
+}
+
+/// A handout or a quest. Players see it once revealed to them.
+model Handout {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// handout | quest
+  kind       String   @default("handout")
+  title      String
+  body       Json
+  imageId    String?
+  /// Character ids that see it; empty = everyone in the party.
+  visibleTo  String[]
+  revealed   Boolean  @default(false)
+  /// Quests: open | done | failed
+  status     String   @default("open")
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([campaignId])
+}
+
+/// Images for handouts and maps, stored in the database (small self-hosted setup).
+model CampaignFile {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name       String
+  mime       String
+  size       Int
+  data       Bytes
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+}
+
+/// A merchant: library items with prices; players buy into their sheets.
+model Shop {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  open        Boolean  @default(false)
+  /// ShopItem[] (src/lib/shop.ts)
+  items       Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([campaignId])
 }

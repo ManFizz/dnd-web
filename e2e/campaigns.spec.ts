@@ -33,11 +33,12 @@ test("GM invites a player, approves the character and sees the sheet live", asyn
   await gm.getByRole("dialog").getByRole("button", { name: "Создать" }).click();
   await expect(gm).toHaveURL(/\/campaigns\/[\w-]+$/);
   await expect(gm.getByText("онлайн")).toBeVisible();
+  await gm.getByRole("radio", { name: "Кампания" }).click();
   await gm.getByRole("radio", { name: "Участники" }).click();
   await gm.getByRole("button", { name: "Создать и скопировать ссылку" }).click();
   const link = (await gm.locator("code").filter({ hasText: "/join/" }).first().textContent())?.trim() ?? "";
   expect(link).toMatch(/\/join\/[\w-]+$/);
-  await gm.getByRole("radio", { name: "Партия" }).click();
+  await gm.getByRole("radio", { name: "Стол" }).click();
 
   // Player joins and brings the character.
   await player.goto(new URL(link).pathname);
@@ -56,9 +57,10 @@ test("GM invites a player, approves the character and sees the sheet live", asyn
   await expect(player.getByText("В партии", { exact: true })).toBeVisible();
 
   // Party bonus table lists the character.
+  await gm.getByRole("radio", { name: "Кампания" }).click();
   await gm.getByRole("radio", { name: "Бонусы" }).click();
   await expect(gm.getByRole("columnheader", { name: "Брам" })).toBeVisible();
-  await gm.getByRole("radio", { name: "Партия" }).click();
+  await gm.getByRole("radio", { name: "Стол" }).click();
 
   // GM opens the sheet: read-only, follows the player's saves.
   await gm.getByRole("link", { name: "Брам" }).click();

@@ -18,6 +18,10 @@ import { LootTab } from "./loot";
 import { MutationsTab } from "./mutations";
 import { CampaignNav, type TabDef } from "./nav";
 import { BestiaryTab } from "./bestiary";
+import { EncounterTab } from "./encounter";
+import { HandoutsTab } from "./handouts";
+import { SecretRoll, SessionsTab } from "./sessions";
+import { ShopTab } from "./shop";
 import { BringCharacterDialog, MyCharacters, PartyRoster, ReviewQueue } from "./lobby";
 import { MembersTab } from "./members";
 import { PartyGrid, usePartySheets } from "./party";
@@ -26,7 +30,21 @@ import { SettingsTab } from "./settings";
 import { QuickActions, StashTab } from "./stash";
 import { useCampaignStream, type StreamState } from "./use-campaign-stream";
 
-type Tab = "party" | "library" | "grants" | "loot" | "stash" | "bestiary" | "mutations" | "bonuses" | "members" | "settings";
+type Tab =
+  | "party"
+  | "encounter"
+  | "sessions"
+  | "handouts"
+  | "shop"
+  | "library"
+  | "grants"
+  | "loot"
+  | "stash"
+  | "bestiary"
+  | "mutations"
+  | "bonuses"
+  | "members"
+  | "settings";
 
 const STREAM_LABELS: Record<StreamState, { text: string; dot: string }> = {
   live: { text: "Обновляется вживую", dot: "bg-good" },
@@ -134,10 +152,14 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
   });
 
   const tabs: TabDef<Tab>[] = [
-    { value: "party", label: "Партия", group: "Партия", show: true },
+    { value: "party", label: "Партия", group: "Стол", show: true },
+    { value: "encounter", label: "Бой", group: "Стол", show: true },
+    { value: "handouts", label: "Квесты и раздатки", group: "Стол", show: true },
+    { value: "sessions", label: "Сессии", group: "Стол", show: true },
     { value: "grants", label: "Выдачи", group: "Добыча", show: gm },
     { value: "loot", label: "Лут", group: "Добыча", show: gm },
     { value: "stash", label: "Сундук", group: "Добыча", show: true },
+    { value: "shop", label: "Лавка", group: "Добыча", show: true },
     { value: "library", label: "Библиотека", group: "Справочники", show: gm },
     { value: "bestiary", label: "Бестиарий", group: "Справочники", show: gm },
     { value: "mutations", label: "Мутации", group: "Справочники", show: gm },
@@ -187,7 +209,12 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
                 <div className="flex min-w-0 flex-col gap-4">
                   {gm && <ReviewQueue detail={detail} onChanged={refresh} />}
-                  {gm && accepted.length > 0 && <QuickActions />}
+                  {gm && accepted.length > 0 && (
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <QuickActions />
+                      <SecretRoll />
+                    </div>
+                  )}
                   {gm ? (
                     party === null ? (
                       <div className="flex justify-center py-10">
@@ -226,6 +253,10 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
             {current === "library" && <LibraryTab onGrant={(templateId) => setGranting({ templateId })} />}
             {current === "grants" && <GrantsTab onGrant={() => setGranting({ templateId: null })} />}
             {current === "stash" && <StashTab />}
+            {current === "encounter" && <EncounterTab />}
+            {current === "sessions" && <SessionsTab />}
+            {current === "handouts" && <HandoutsTab />}
+            {current === "shop" && <ShopTab />}
             {current === "loot" && <LootTab />}
             {current === "bestiary" && <BestiaryTab />}
             {current === "mutations" && <MutationsTab />}

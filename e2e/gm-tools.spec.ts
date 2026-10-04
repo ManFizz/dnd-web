@@ -14,6 +14,7 @@ test("GM grants a locked cursed item and XP; the player's sheet follows", async 
 
   // GM creates a library item through the UI.
   await gm.goto(`/campaigns/${campaignId}`);
+  await gm.getByRole("radio", { name: "Справочники" }).click();
   await gm.getByRole("radio", { name: "Библиотека" }).click();
   await gm.getByRole("button", { name: "Создать" }).click();
   await gm.getByRole("menuitem", { name: "Предмет" }).click();

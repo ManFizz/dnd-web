@@ -31,6 +31,10 @@ type AmountOptions = {
   requireSpendReason?: boolean;
   unit?: string;
   integer?: boolean;
+  /** Only the number: no reason field (the caller writes the journal itself). */
+  noReason?: boolean;
+  /** Text of the confirm button instead of Добавить/Списать. */
+  confirmLabel?: string;
 };
 export type AmountResult = { delta: number; reason: string };
 
@@ -246,7 +250,7 @@ function AmountDialog({ opts, onDone }: { opts: AmountOptions; onDone: (v: Amoun
             Отмена
           </Button>
           <Button variant="primary" disabled={invalid} onClick={submit}>
-            {direction === "gain" ? "Добавить" : "Списать"}
+            {opts.confirmLabel ?? (direction === "gain" ? "Добавить" : "Списать")}
           </Button>
         </>
       }
@@ -278,14 +282,18 @@ function AmountDialog({ opts, onDone }: { opts: AmountOptions; onDone: (v: Amoun
         <Field label={opts.unit ? `Количество (${opts.unit})` : "Количество"}>
           <Input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
         </Field>
-        <Field
-          label={direction === "gain" ? "За что получено" : "На что потрачено"}
-          required={reasonNeeded}
-          hint={reasonNeeded ? "Попадёт в журнал изменений" : "Необязательно, попадёт в журнал"}
-        >
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={direction === "gain" ? "Награда за квест, находка…" : "Покупка, плата…"} />
-        </Field>
-        <ReasonChips onPick={setReason} />
+        {!opts.noReason && (
+          <>
+            <Field
+              label={direction === "gain" ? "За что получено" : "На что потрачено"}
+              required={reasonNeeded}
+              hint={reasonNeeded ? "Попадёт в журнал изменений" : "Необязательно, попадёт в журнал"}
+            >
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={direction === "gain" ? "Награда за квест, находка…" : "Покупка, плата…"} />
+            </Field>
+            <ReasonChips onPick={setReason} />
+          </>
+        )}
       </form>
     </Modal>
   );

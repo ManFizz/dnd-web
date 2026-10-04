@@ -267,8 +267,9 @@ async function deliver(
   return version;
 }
 
-export async function createGrants(campaignId: string, userId: string, input: GrantInput) {
-  await requireGm(campaignId, userId);
+/** `trusted`: the caller already checked the rights (a player buying in a shop). */
+export async function createGrants(campaignId: string, userId: string, input: GrantInput, { trusted = false } = {}) {
+  if (!trusted) await requireGm(campaignId, userId);
   const party = await partyCharacters(campaignId);
   for (const id of input.characterIds) if (!party.has(id)) throw new HttpError(400, "Персонаж не в партии этой кампании");
 
