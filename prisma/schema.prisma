@@ -178,6 +178,10 @@ model Campaign {
   stash       Json                @default("{}")
   templates   CampaignTemplate[]
   grants      Grant[]
+  creatures   Creature[]
+  lootTables  LootTable[]
+  lootDrafts  LootDraft[]
+  mutations   MutationDraft[]
 
   @@index([ownerId])
 }
@@ -287,4 +291,91 @@ model CampaignCharacter {
   updatedAt   DateTime  @updatedAt
 
   @@index([campaignId])
+}
+
+/// Bestiary entry: imported from dnd.su (campaignId null, shared) or a GM's
+/// own creature in one campaign.
+model Creature {
+  id         String    @id @default(cuid())
+  /// dndsu | dndsu-homebrew | custom
+  source     String
+  externalId String?
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  nameRu     String
+  nameEn     String    @default("")
+  /// tiny | small | medium | large | huge | gargantuan
+  size       String    @default("")
+  /// Creature type in Russian, lower case: "гуманоид", "дракон"...
+  type       String    @default("")
+  alignment  String    @default("")
+  /// Challenge rating as a number (1/8 = 0.125).
+  cr         Float     @default(0)
+  ac         Int       @default(10)
+  hp         Int       @default(1)
+  hpFormula  String    @default("")
+  speed      String    @default("")
+  /// { str, dex, con, int, wis, cha } scores when the page had them.
+  abilities  Json?
+  /// The whole statblock as rich text.
+  statblock  Json
+  sourceBook String    @default("")
+  url        String    @default("")
+  searchText String    @default("")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([source, externalId])
+  @@index([campaignId])
+  @@index([cr])
+}
+
+/// Weighted loot table of a campaign (rows in src/lib/loot.ts).
+model LootTable {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name       String
+  folder     String   @default("")
+  /// How many times to roll: a dice formula.
+  rolls      String   @default("1")
+  rows       Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([campaignId])
+}
+
+/// Rolled loot waiting for the GM to hand it out.
+model LootDraft {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  title      String
+  /// draft | distributed | discarded
+  status     String   @default("draft")
+  /// { items: LootItem[], coins: Record<coin, number>, log: string[] }
+  data       Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([campaignId, status])
+}
+
+/// Mutations rolled for a character after death, before the GM applies them.
+model MutationDraft {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  characterId String
+  /// How long the character was dead, in minutes.
+  minutes     Int
+  /// draft | applied | discarded
+  status      String   @default("draft")
+  /// MutationRoll[] (src/lib/mutations.ts)
+  rolls       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([campaignId, status])
 }

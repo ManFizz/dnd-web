@@ -8,7 +8,7 @@
     "build": "next build",
     "prebuild": "npm run build:tools",
     "vercel-build": "prisma migrate deploy && npm run build",
-    "build:tools": "esbuild scripts/dndsu-export.ts --bundle --format=iife --target=es2020 --charset=utf8 --legal-comments=none --log-level=warning --outfile=public/tools/dndsu-export.js",
+    "build:tools": "esbuild scripts/dndsu-export.ts --bundle --format=iife --target=es2020 --charset=utf8 --legal-comments=none --log-level=warning --define:EXPORT_KIND='\"spells\"' --outfile=public/tools/dndsu-export.js && esbuild scripts/dndsu-export.ts --bundle --format=iife --target=es2020 --charset=utf8 --legal-comments=none --log-level=warning --define:EXPORT_KIND='\"bestiary\"' --outfile=public/tools/dndsu-bestiary.js",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",

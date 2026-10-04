@@ -7,13 +7,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CAMPAIGN_SCOPES, isGmRole, ROLE_LABELS, type CampaignDetail, type CampaignEvent, type CampaignScope, type PartyCharacter } from "@/lib/campaigns";
 import { cn } from "@/lib/cn";
-import { Badge, Empty, Panel, Segmented, Spinner } from "@/components/ui/misc";
+import { Badge, Empty, Panel, Spinner } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { api, ApiError } from "./api";
 import { CampaignContext, type CampaignCtx } from "./context";
 import { formatSession } from "./format";
 import { GrantDialog, GrantsTab, OffersPanel } from "./grants";
 import { LibraryTab } from "./library";
+import { LootTab } from "./loot";
+import { MutationsTab } from "./mutations";
+import { CampaignNav, type TabDef } from "./nav";
+import { BestiaryTab } from "./bestiary";
 import { BringCharacterDialog, MyCharacters, PartyRoster, ReviewQueue } from "./lobby";
 import { MembersTab } from "./members";
 import { PartyGrid, usePartySheets } from "./party";
@@ -22,7 +26,7 @@ import { SettingsTab } from "./settings";
 import { QuickActions, StashTab } from "./stash";
 import { useCampaignStream, type StreamState } from "./use-campaign-stream";
 
-type Tab = "party" | "library" | "grants" | "stash" | "bonuses" | "members" | "settings";
+type Tab = "party" | "library" | "grants" | "loot" | "stash" | "bestiary" | "mutations" | "bonuses" | "members" | "settings";
 
 const STREAM_LABELS: Record<StreamState, { text: string; dot: string }> = {
   live: { text: "Обновляется вживую", dot: "bg-good" },
@@ -129,20 +133,19 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
     }
   });
 
-  const tabs: { value: Tab; label: string }[] = [
-    { value: "party", label: "Партия" },
-    ...(gm
-      ? [
-          { value: "library" as const, label: "Библиотека" },
-          { value: "grants" as const, label: "Выдачи" },
-        ]
-      : []),
-    { value: "stash", label: "Сундук" },
-    ...(gm ? [{ value: "bonuses" as const, label: "Бонусы" }] : []),
-    { value: "members", label: "Участники" },
-    ...(owner ? [{ value: "settings" as const, label: "Настройки" }] : []),
+  const tabs: TabDef<Tab>[] = [
+    { value: "party", label: "Партия", group: "Партия", show: true },
+    { value: "grants", label: "Выдачи", group: "Добыча", show: gm },
+    { value: "loot", label: "Лут", group: "Добыча", show: gm },
+    { value: "stash", label: "Сундук", group: "Добыча", show: true },
+    { value: "library", label: "Библиотека", group: "Справочники", show: gm },
+    { value: "bestiary", label: "Бестиарий", group: "Справочники", show: gm },
+    { value: "mutations", label: "Мутации", group: "Справочники", show: gm },
+    { value: "members", label: "Участники", group: "Кампания", show: true },
+    { value: "bonuses", label: "Бонусы", group: "Кампания", show: gm },
+    { value: "settings", label: "Настройки", group: "Кампания", show: owner },
   ];
-  const current = tabs.some((t) => t.value === tab) ? tab : "party";
+  const current = tabs.some((t) => t.show && t.value === tab) ? tab : "party";
 
   const accepted = (party ?? []).filter((p) => p.status === "accepted");
   const sheets = usePartySheets(accepted);
@@ -178,7 +181,7 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
           </Empty>
         ) : (
           <>
-            <Segmented value={current} onChange={setTab} options={tabs} className="w-fit max-w-full overflow-x-auto" />
+            <CampaignNav tabs={tabs} value={current} onChange={setTab} />
 
             {current === "party" && (
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -223,6 +226,9 @@ export function CampaignApp({ initial }: { initial: CampaignDetail }) {
             {current === "library" && <LibraryTab onGrant={(templateId) => setGranting({ templateId })} />}
             {current === "grants" && <GrantsTab onGrant={() => setGranting({ templateId: null })} />}
             {current === "stash" && <StashTab />}
+            {current === "loot" && <LootTab />}
+            {current === "bestiary" && <BestiaryTab />}
+            {current === "mutations" && <MutationsTab />}
             {current === "bonuses" && (party === null ? <Spinner /> : <PartyBonuses sheets={sheets} />)}
             {current === "members" && <MembersTab detail={detail} onChanged={refresh} />}
             {current === "settings" && (

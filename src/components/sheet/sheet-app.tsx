@@ -55,7 +55,7 @@ export const TABS: TabDef[] = [
   { id: "race", label: "Раса", icon: PersonStanding, group: 1 },
   { id: "class", label: "Класс", icon: GraduationCap, group: 1 },
   { id: "feats", label: "Черты", icon: Award, group: 1 },
-  { id: "mutations", label: "Мутации", icon: Dna, group: 1, hide: "tab.mutations" },
+  { id: "mutations", label: "Тело", icon: Dna, group: 1, hide: "tab.mutations" },
   { id: "proficiencies", label: "Владения", icon: Wrench, group: 1 },
   { id: "bonuses", label: "Бонусы", icon: SlidersHorizontal, group: 1 },
   { id: "lore", label: "Лор", icon: ScrollText, group: 2 },

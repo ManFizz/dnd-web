@@ -1,5 +1,7 @@
 import "server-only";
 import { parseHTML } from "linkedom";
+import type { ParsedCreature } from "@/lib/bestiary";
+import { classifyCreatureUrl, discoverCreatureUrls, parseCreatureDocument } from "@/lib/import/dndsu/bestiary";
 import { childSitemaps, classifySpellUrl, discoverSpellUrls, parseSpellDocument, type ParsedSpell, type SpellSource } from "@/lib/import/dndsu/parse";
 
 // Server-side crawler for dnd.su. It follows redirects manually and keeps
@@ -79,6 +81,34 @@ export async function fetchSpells(urls: string[], delayMs = 350): Promise<{ url:
       const html = await fetchDndSu(url, jar);
       const { document } = parseHTML(html);
       out.push({ url, spell: parseSpellDocument(document as unknown as Document, url) });
+    } catch (e) {
+      out.push({ url, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return out;
+}
+
+export async function discoverBestiary(sources: ParsedCreature["source"][]): Promise<string[]> {
+  const jar: Jar = new Map();
+  const xml = await fetchDndSu("https://dnd.su/sitemap.xml", jar);
+  const children = childSitemaps(xml);
+  const docs = children.length ? [] : [xml];
+  for (const child of children.slice(0, 50)) docs.push(await fetchDndSu(child, jar));
+  return [...new Set(docs.flatMap((d) => discoverCreatureUrls(d, sources)))];
+}
+
+export async function fetchCreatures(urls: string[], delayMs = 350): Promise<{ url: string; creature?: ParsedCreature; error?: string }[]> {
+  const jar: Jar = new Map();
+  const out: { url: string; creature?: ParsedCreature; error?: string }[] = [];
+  for (const [idx, url] of urls.entries()) {
+    if (!classifyCreatureUrl(url)) {
+      out.push({ url, error: "Это не адрес существа dnd.su" });
+      continue;
+    }
+    if (idx > 0) await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      const { document } = parseHTML(await fetchDndSu(url, jar));
+      out.push({ url, creature: parseCreatureDocument(document as unknown as Document, url) });
     } catch (e) {
       out.push({ url, error: e instanceof Error ? e.message : String(e) });
     }

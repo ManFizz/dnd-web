@@ -3,7 +3,7 @@
 import { Check, Eye, Gift, Lock, MoreHorizontal, Trash2, Undo2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { EXPIRY_LABELS, GRANT_STATUS_LABELS, LOCK_LABELS, VISIBILITY_LABELS, type GrantInput, type GrantRow, type TemplateRow } from "@/lib/grants";
-import { BODY_PARTS, bodyPartLabel } from "@/lib/rules/constants";
+import { MUTATION_PARTS, mutationPartLabel } from "@/lib/mutations";
 import { GRANT_EXPIRY, GRANT_LOCKS, GRANT_VISIBILITY, type Feature, type GrantExpiry, type GrantLock, type GrantVisibility } from "@/lib/rules/schema";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, NumberInput, Select, Textarea } from "@/components/ui/input";
@@ -20,7 +20,7 @@ import { subkindLabel } from "./library";
 const opts = <T extends string>(values: readonly T[], labels: Record<T, string>) => values.map((v) => ({ value: v, label: labels[v] }));
 
 export const MUTATION_PART_OPTIONS = [
-  ...BODY_PARTS.map((p) => ({ value: p.id as string, label: p.label as string })),
+  ...MUTATION_PARTS.map((p) => ({ value: p.id as string, label: p.label as string })),
   { value: "choice", label: "На выбор игрока" },
 ];
 
@@ -257,7 +257,7 @@ function GrantLine({ g, gm }: { g: GrantRow; gm: boolean }) {
               стадия {g.stage + 1}/{g.stages}
             </Badge>
           )}
-          {g.bodyPart && <Badge>{g.bodyPart === "choice" ? "часть тела на выбор" : bodyPartLabel(g.bodyPart)}</Badge>}
+          {g.bodyPart && <Badge>{g.bodyPart === "choice" ? "часть тела на выбор" : mutationPartLabel(g.bodyPart)}</Badge>}
         </div>
       </div>
       {gm && active && (

@@ -34,7 +34,7 @@ const asCharStatus = (s: string) => s as CampaignCharacterStatus;
 /** Avatars may be data URLs; keep big ones out of list payloads. */
 const listAvatar = (url: string) => (url.length > 2000 ? "" : url);
 
-async function membership(campaignId: string, userId: string): Promise<Member | null> {
+export async function membership(campaignId: string, userId: string): Promise<Member | null> {
   const m = await prisma.campaignMember.findUnique({ where: { campaignId_userId: { campaignId, userId } } });
   return m ? { id: m.id, role: asRole(m.role), status: asMemberStatus(m.status) } : null;
 }

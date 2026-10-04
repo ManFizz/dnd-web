@@ -10,14 +10,51 @@ import { Checkbox } from "@/components/ui/input";
 import { Panel } from "@/components/ui/misc";
 
 type SourceId = "dndsu" | "next-dndsu" | "dndsu-homebrew";
+
+/** What is imported: spells or bestiary creatures. Same flow, other endpoints and words. */
+export type ImportKind = {
+  api: string;
+  sources: { id: SourceId; label: string; hint: string }[];
+  script: string;
+  /** Key of the list in the upload file. */
+  listKey: string;
+  what: string;
+  whatAcc: string;
+  example: string;
+  fileName: string;
+};
+
+export const BESTIARY_IMPORT: ImportKind = {
+  api: "/api/bestiary",
+  sources: [
+    { id: "dndsu", label: "dnd.su", hint: "Бестиарий 5e из официальных книг" },
+    { id: "dndsu-homebrew", label: "Хоумбрю dnd.su", hint: "Пользовательские существа с сайта" },
+  ],
+  script: "/tools/dndsu-bestiary.js",
+  listKey: "creatures",
+  what: "существ",
+  whatAcc: "существ",
+  example: "https://dnd.su/bestiary/",
+  fileName: "bestiary-dnd.su-….json",
+};
+
 type Failure = { url: string; error: string };
 type Totals = { created: number; updated: number; failed: number; rejected: number };
 
-const SOURCES: { id: SourceId; label: string; hint: string }[] = [
-  { id: "dndsu", label: "dnd.su", hint: "Заклинания 5e (2014) из официальных книг" },
-  { id: "next-dndsu", label: "next.dnd.su", hint: "Заклинания редакции 2024" },
-  { id: "dndsu-homebrew", label: "Хоумбрю dnd.su", hint: "Пользовательские заклинания с сайта" },
-];
+const SPELL_IMPORT: ImportKind = {
+  api: "/api/spells",
+  sources: [
+    { id: "dndsu", label: "dnd.su", hint: "Заклинания 5e (2014) из официальных книг" },
+    { id: "next-dndsu", label: "next.dnd.su", hint: "Заклинания редакции 2024" },
+    { id: "dndsu-homebrew", label: "Хоумбрю dnd.su", hint: "Пользовательские заклинания с сайта" },
+  ],
+  script: "/tools/dndsu-export.js",
+  listKey: "spells",
+  what: "заклинаний",
+  whatAcc: "заклинания",
+  example: "https://dnd.su/spells/",
+  fileName: "spells-dnd.su-….json",
+};
 
 const BATCH = 12;
 /** Upload chunks stay well below the ~4 MB request limit of hosting platforms. */
@@ -106,14 +143,25 @@ export function SpellImport() {
           Повторная загрузка обновит заклинания, а не продублирует их.
         </p>
       </div>
-      <ServerImport onDone={loadStats} />
-      <BrowserScript />
-      <FileUpload onDone={loadStats} />
+      <ServerImport kind={SPELL_IMPORT} onDone={loadStats} />
+      <BrowserScript kind={SPELL_IMPORT} />
+      <FileUpload kind={SPELL_IMPORT} onDone={loadStats} />
     </div>
   );
 }
 
-function ServerImport({ onDone }: { onDone: () => void }) {
+/** The three ways to import a dnd.su section, for a page of its own. */
+export function DndSuImportBlocks({ kind, onDone }: { kind: ImportKind; onDone: () => void }) {
+  return (
+    <>
+      <ServerImport kind={kind} onDone={onDone} />
+      <BrowserScript kind={kind} />
+      <FileUpload kind={kind} onDone={onDone} />
+    </>
+  );
+}
+
+function ServerImport({ kind, onDone }: { kind: ImportKind; onDone: () => void }) {
   const [sources, setSources] = useState<SourceId[]>(["dndsu"]);
   const [urls, setUrls] = useState<string[] | null>(null);
   const [discovering, setDiscovering] = useState(false);
@@ -129,7 +177,7 @@ function ServerImport({ onDone }: { onDone: () => void }) {
     setError(null);
     setUrls(null);
     try {
-      const res = await fetch("/api/spells/dndsu", {
+      const res = await fetch(`${kind.api}/dndsu`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "discover", sources }),
@@ -155,7 +203,7 @@ function ServerImport({ onDone }: { onDone: () => void }) {
       if (stopRef.current) break;
       const batch = list.slice(i, i + BATCH);
       try {
-        const res = await fetch("/api/spells/dndsu", {
+        const res = await fetch(`${kind.api}/dndsu`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action: "import", urls: batch }),
@@ -191,9 +239,11 @@ function ServerImport({ onDone }: { onDone: () => void }) {
       }
     >
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">Сервер сам обойдёт страницы заклинаний на dnd.su, не спеша, пачками по {BATCH}. Вкладку нужно держать открытой.</p>
+        <p className="text-sm text-muted">
+          Сервер сам обойдёт страницы {kind.what} на dnd.su, не спеша, пачками по {BATCH}. Вкладку нужно держать открытой.
+        </p>
         <div className="flex flex-col gap-1.5">
-          {SOURCES.map((s) => (
+          {kind.sources.map((s) => (
             <Checkbox
               key={s.id}
               checked={sources.includes(s.id)}
@@ -210,7 +260,7 @@ function ServerImport({ onDone }: { onDone: () => void }) {
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={discover} disabled={!sources.length || discovering || running}>
             {discovering ? <Loader2 className="animate-spin" /> : <Globe />}
-            Найти заклинания
+            Найти {kind.whatAcc}
           </Button>
           {urls && !running && (
             <Button variant="primary" onClick={() => run(urls)} disabled={!urls.length}>
@@ -255,11 +305,11 @@ function ServerImport({ onDone }: { onDone: () => void }) {
   );
 }
 
-function BrowserScript() {
+function BrowserScript({ kind }: { kind: ImportKind }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      const res = await fetch("/tools/dndsu-export.js", { cache: "no-store" });
+      const res = await fetch(kind.script, { cache: "no-store" });
       if (!res.ok) throw new Error("Скрипт не найден: соберите проект командой npm run build");
       await navigator.clipboard.writeText(await res.text());
       setCopied(true);
@@ -278,24 +328,24 @@ function BrowserScript() {
       }
     >
       <div className="flex flex-col gap-3 text-sm">
-        <p className="text-muted">Если dnd.su не пускает сервер (защита от ботов), заклинания можно собрать в вашем браузере, а файл загрузить ниже.</p>
+        <p className="text-muted">Если dnd.su не пускает сервер (защита от ботов), {kind.whatAcc} можно собрать в вашем браузере, а файл загрузить ниже.</p>
         <ol className="list-decimal space-y-1.5 pl-5">
           <li>
             Скопируйте скрипт.{" "}
-            <a href="/tools/dndsu-export.js" target="_blank" className="text-info hover:underline">
+            <a href={kind.script} target="_blank" className="text-info hover:underline">
               Его код можно посмотреть
             </a>
             : он только читает открытые страницы сайта и сохраняет файл.
           </li>
           <li>
             Откройте{" "}
-            <a href="https://dnd.su/spells/" target="_blank" rel="noopener noreferrer" className="text-info hover:underline">
-              dnd.su/spells
+            <a href={kind.example} target="_blank" rel="noopener noreferrer" className="text-info hover:underline">
+              {kind.example.replace("https://", "").replace(/\/$/, "")}
             </a>{" "}
-            (или next.dnd.su для 2024) в этом же браузере.
+            {kind === SPELL_IMPORT ? "(или next.dnd.su для 2024) " : ""}в этом же браузере.
           </li>
           <li>Откройте консоль разработчика (F12, вкладка Console), вставьте скрипт и нажмите Enter. Chrome может попросить сначала ввести «allow pasting».</li>
-          <li>Дождитесь окончания: браузер скачает файл spells-dnd.su-….json.</li>
+          <li>Дождитесь окончания: браузер скачает файл {kind.fileName}.</li>
           <li>Загрузите этот файл в блоке ниже.</li>
         </ol>
         <Button className="self-start" onClick={copy}>
@@ -307,7 +357,7 @@ function BrowserScript() {
   );
 }
 
-function FileUpload({ onDone }: { onDone: () => void }) {
+function FileUpload({ kind, onDone }: { kind: ImportKind; onDone: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -325,15 +375,16 @@ function FileUpload({ onDone }: { onDone: () => void }) {
       setError("Файл не читается как JSON");
       return;
     }
-    // Same shapes as the server accepts: { spells: [...] }, a bare array, or { records: {...} }.
+    // Same shapes as the server accepts: { spells: [...] } (or creatures), a bare array, or { records: {...} }.
+    const key = kind.listKey;
     let chunks: unknown[];
-    if (Array.isArray(raw)) chunks = chunkEntries(raw).map((c) => ({ spells: c }));
-    else if (raw && typeof raw === "object" && Array.isArray((raw as { spells?: unknown }).spells))
-      chunks = chunkEntries((raw as { spells: unknown[] }).spells).map((c) => ({ spells: c }));
+    if (Array.isArray(raw)) chunks = chunkEntries(raw).map((c) => ({ [key]: c }));
+    else if (raw && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>)[key]))
+      chunks = chunkEntries((raw as Record<string, unknown[]>)[key]).map((c) => ({ [key]: c }));
     else if (raw && typeof raw === "object" && (raw as { records?: unknown }).records && typeof (raw as { records: unknown }).records === "object")
       chunks = chunkEntries(Object.entries((raw as { records: Record<string, unknown> }).records)).map((c) => ({ records: Object.fromEntries(c) }));
     else {
-      setError("В файле нет списка заклинаний");
+      setError(`В файле нет списка ${kind.what}`);
       return;
     }
     setRunning(true);
@@ -341,16 +392,16 @@ function FileUpload({ onDone }: { onDone: () => void }) {
     const sum = zero();
     for (const [i, data] of chunks.entries()) {
       try {
-        const res = await fetch("/api/spells/upload", {
+        const res = await fetch(`${kind.api}/upload`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ data }),
         });
         if (!res.ok) throw new Error(await apiError(res));
-        const r = (await res.json()) as { created: number; updated: number; rejected: number };
+        const r = (await res.json()) as { created: number; updated: number; rejected: number | string[] };
         sum.created += r.created;
         sum.updated += r.updated;
-        sum.rejected += r.rejected;
+        sum.rejected += Array.isArray(r.rejected) ? r.rejected.length : r.rejected;
       } catch (e) {
         setError(`Часть ${i + 1}: ${e instanceof Error ? e.message : "ошибка"}`);
         sum.failed++;
@@ -393,7 +444,7 @@ function FileUpload({ onDone }: { onDone: () => void }) {
           )}
         >
           <FileUp className="size-6 text-faint" />
-          <span className="font-medium">Файл из скрипта или JSON со списком заклинаний</span>
+          <span className="font-medium">Файл из скрипта или JSON со списком {kind.what}</span>
           <span className="text-xs text-muted">Большие файлы отправляются частями</span>
         </button>
         <input

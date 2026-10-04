@@ -37,7 +37,7 @@ import { changeSheet, changeSheetTx, journal } from "./sheets";
 
 // GM library and grants: how the GM changes players' sheets.
 
-function parseObject(kind: string, body: unknown): TemplateObject {
+export function parseObject(kind: string, body: unknown): TemplateObject {
   const parsed = TemplateObjectSchema.safeParse({ kind, body });
   if (!parsed.success) throw new HttpError(500, "Шаблон повреждён");
   return parsed.data;
@@ -573,13 +573,13 @@ export async function quickAction(campaignId: string, userId: string, a: QuickAc
 // ---------------------------------------------------------------- party stash
 
 /** Locks the campaign row and returns its stash. */
-async function lockStash(tx: Prisma.TransactionClient, campaignId: string): Promise<Stash> {
+export async function lockStash(tx: Prisma.TransactionClient, campaignId: string): Promise<Stash> {
   await tx.$queryRaw`SELECT id FROM "Campaign" WHERE id = ${campaignId} FOR UPDATE`;
   const row = await tx.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { stash: true } });
   return parseStash(row.stash);
 }
 
-async function saveStash(tx: Prisma.TransactionClient, campaignId: string, stash: Stash) {
+export async function saveStash(tx: Prisma.TransactionClient, campaignId: string, stash: Stash) {
   await tx.campaign.update({ where: { id: campaignId }, data: { stash: StashSchema.parse(stash) as unknown as Prisma.InputJsonValue } });
 }
 
@@ -605,7 +605,7 @@ function splitItem(list: Item[], itemId: string, quantity: number | undefined): 
 }
 
 /** Puts an item into a list, stacking with an identical one. */
-function addItem(list: Item[], item: Item) {
+export function addItem(list: Item[], item: Item) {
   const plain = (i: Item) => JSON.stringify({ ...i, id: "", quantity: 0, equipped: false, attuned: false });
   const same = !item.grant && list.find((i) => !i.grant && plain(i) === plain(item));
   if (same) same.quantity += item.quantity;

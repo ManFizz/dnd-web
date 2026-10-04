@@ -1,8 +1,15 @@
+import type { ParsedCreature } from "../src/lib/bestiary";
+import { discoverCreatureUrls, parseCreatureDocument } from "../src/lib/import/dndsu/bestiary";
 import { childSitemaps, discoverSpellUrls, parseSpellDocument, type ParsedSpell, type SpellSource } from "../src/lib/import/dndsu/parse";
 
 // Browser console script. Run it on dnd.su (or next.dnd.su) to download every
-// spell into a JSON file, then upload that file on the spell import page.
-// It only reads public pages of the site you are on, at a polite pace.
+// spell (or every bestiary creature) into a JSON file, then upload that file
+// on the import page. It only reads public pages of the site you are on, at a
+// polite pace. Built twice: EXPORT_KIND is "spells" or "bestiary".
+
+declare const EXPORT_KIND: "spells" | "bestiary";
+const BESTIARY = EXPORT_KIND === "bestiary";
+const WHAT = BESTIARY ? "существ" : "заклинаний";
 
 type Failure = { url: string; error: string };
 
@@ -17,7 +24,7 @@ function panel() {
     "position:fixed;z-index:2147483647;right:16px;bottom:16px;width:340px;padding:14px 16px;border-radius:12px;" +
     "background:#16181d;color:#e8e6e3;font:14px/1.4 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.45)";
   const title = document.createElement("div");
-  title.textContent = "Экспорт заклинаний для «Листа героя»";
+  title.textContent = `Экспорт ${WHAT} для «Листа героя»`;
   title.style.cssText = "font-weight:600;margin-bottom:8px";
   const text = document.createElement("div");
   const bar = document.createElement("div");
@@ -57,19 +64,19 @@ const local = (url: string) => {
   return `${location.origin}${u.pathname}${u.search}`;
 };
 
-function download(spells: ParsedSpell[], failed: Failure[]) {
+function download(records: (ParsedSpell | ParsedCreature)[], failed: Failure[]) {
   const payload = {
-    format: "dnd-web-spells",
+    format: BESTIARY ? "dnd-web-bestiary" : "dnd-web-spells",
     version: 1,
     exportedAt: new Date().toISOString(),
     origin: location.origin,
     failed,
-    spells,
+    [BESTIARY ? "creatures" : "spells"]: records,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `spells-${location.hostname}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `${BESTIARY ? "bestiary" : "spells"}-${location.hostname}-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -77,12 +84,13 @@ function download(spells: ParsedSpell[], failed: Failure[]) {
 
 async function main() {
   const host = location.hostname.replace(/^www\./, "");
-  if (host !== "dnd.su" && host !== "next.dnd.su") {
-    alert("Откройте любую страницу dnd.su (или next.dnd.su) и запустите скрипт там.");
+  if (host !== "dnd.su" && (BESTIARY || host !== "next.dnd.su")) {
+    alert(BESTIARY ? "Откройте любую страницу dnd.su и запустите скрипт там." : "Откройте любую страницу dnd.su (или next.dnd.su) и запустите скрипт там.");
     return;
   }
-  const sources: SpellSource[] =
-    host === "next.dnd.su" ? ["next-dndsu"] : confirm("Добавить хоумбрю-заклинания с dnd.su/homebrew?") ? ["dndsu", "dndsu-homebrew"] : ["dndsu"];
+  const homebrew = host === "dnd.su" && confirm(`Добавить хоумбрю-${BESTIARY ? "существ" : "заклинания"} с dnd.su/homebrew?`);
+  const sources: SpellSource[] = host === "next.dnd.su" ? ["next-dndsu"] : homebrew ? ["dndsu", "dndsu-homebrew"] : ["dndsu"];
+  const creatureSources: ParsedCreature["source"][] = homebrew ? ["dndsu", "dndsu-homebrew"] : ["dndsu"];
 
   const ui = panel();
   let stopped = false;
@@ -102,14 +110,14 @@ async function main() {
       console.warn("Карта сайта не загрузилась", child, e);
     }
   }
-  const urls = [...new Set(maps.flatMap((xml) => discoverSpellUrls(xml, sources)))];
+  const urls = [...new Set(maps.flatMap((xml) => (BESTIARY ? discoverCreatureUrls(xml, creatureSources) : discoverSpellUrls(xml, sources))))];
   if (!urls.length) {
-    ui.set("В карте сайта не нашлось заклинаний. Возможно, сайт изменился.");
+    ui.set(`В карте сайта не нашлось ${WHAT}. Возможно, сайт изменился.`);
     ui.done();
     return;
   }
 
-  const spells: ParsedSpell[] = [];
+  const records: (ParsedSpell | ParsedCreature)[] = [];
   const failed: Failure[] = [];
   const parser = new DOMParser();
   const queue = [...urls];
@@ -121,7 +129,8 @@ async function main() {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const html = await fetchText(local(url));
-          spells.push(parseSpellDocument(parser.parseFromString(html, "text/html"), url));
+          const doc = parser.parseFromString(html, "text/html");
+          records.push(BESTIARY ? parseCreatureDocument(doc, url) : parseSpellDocument(doc, url));
           break;
         } catch (e) {
           if (attempt === 3) failed.push({ url, error: e instanceof Error ? e.message : String(e) });
@@ -129,16 +138,16 @@ async function main() {
         }
       }
       done++;
-      ui.set(`Заклинаний: ${spells.length} из ${urls.length}${failed.length ? `, ошибок: ${failed.length}` : ""}`, done / urls.length);
+      ui.set(`${BESTIARY ? "Существ" : "Заклинаний"}: ${records.length} из ${urls.length}${failed.length ? `, ошибок: ${failed.length}` : ""}`, done / urls.length);
       await sleep(PAUSE_MS);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
-  spells.sort((a, b) => a.level - b.level || a.nameRu.localeCompare(b.nameRu, "ru"));
-  download(spells, failed);
+  records.sort((a, b) => ("level" in a && "level" in b ? a.level - b.level : 0) || a.nameRu.localeCompare(b.nameRu, "ru"));
+  download(records, failed);
   ui.set(
-    `Готово: ${spells.length} заклинаний${failed.length ? `, не удалось: ${failed.length} (список в файле)` : ""}. Загрузите скачанный файл на странице импорта.`,
+    `Готово: ${records.length} ${WHAT}${failed.length ? `, не удалось: ${failed.length} (список в файле)` : ""}. Загрузите скачанный файл на странице импорта.`,
     1,
   );
   ui.done();

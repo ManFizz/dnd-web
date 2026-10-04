@@ -27,7 +27,7 @@ export const HIDEABLE: HideableGroup[] = [
     title: "Вкладки",
     items: [
       { key: "tab.spells", label: "Заклинания" },
-      { key: "tab.mutations", label: "Мутации" },
+      { key: "tab.mutations", label: "Тело (мутации)" },
       { key: "tab.counters", label: "Счётчики" },
       { key: "tab.notes", label: "Заметки" },
     ],

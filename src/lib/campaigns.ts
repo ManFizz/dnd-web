@@ -157,7 +157,7 @@ export type PartyCharacter = {
 };
 
 /** Parts of a campaign that reload on their own when they change. */
-export const CAMPAIGN_SCOPES = ["library", "grants", "stash", "loot", "encounter", "sessions", "handouts", "shop", "maps", "bestiary"] as const;
+export const CAMPAIGN_SCOPES = ["library", "grants", "stash", "loot", "encounter", "sessions", "handouts", "shop", "maps", "bestiary", "mutations"] as const;
 export type CampaignScope = (typeof CAMPAIGN_SCOPES)[number];
 
 /** Messages sent over the campaign event stream. Payloads carry ids only. */
