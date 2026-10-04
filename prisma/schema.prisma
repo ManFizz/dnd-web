@@ -1,0 +1,155 @@
+// Database schema. Auth tables follow the Better Auth core schema.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String           @id
+  name          String
+  email         String           @unique
+  emailVerified Boolean          @default(false)
+  image         String?
+  /// "admin" can manage the shared spell library.
+  role          String           @default("user")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  characters    Character[]
+  spells        Spell[]
+  events        CharacterEvent[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+/// Better Auth rate limits, kept in the database so they hold across serverless instances.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rateLimit")
+}
+
+model Character {
+  id        String           @id @default(cuid())
+  ownerId   String
+  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  /// Short line for lists: "Проклятокровый, Волшебник 13".
+  summary   String           @default("")
+  avatarUrl String           @default("")
+  /// Full character document (see src/lib/rules/schema.ts).
+  data      Json
+  /// Incremented on every save, used for optimistic concurrency.
+  version   Int              @default(1)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  events    CharacterEvent[]
+
+  @@index([ownerId, updatedAt])
+}
+
+/// Journal of changes with the reason given by the player.
+model CharacterEvent {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  kind        String
+  summary     String
+  reason      String    @default("")
+  data        Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([characterId, createdAt])
+}
+
+/// Spell library. ownerId = null: shared library (imported from dnd.su),
+/// otherwise a homebrew spell that belongs to one user.
+model Spell {
+  id            String   @id @default(cuid())
+  source        String
+  externalId    String?
+  ownerId       String?
+  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  nameRu        String
+  nameEn        String   @default("")
+  level         Int
+  school        String   @default("")
+  ritual        Boolean  @default(false)
+  concentration Boolean  @default(false)
+  castingTime   String   @default("")
+  range         String   @default("")
+  components    String   @default("")
+  duration      String   @default("")
+  classes       String[]
+  subclasses    String[]
+  description   Json
+  sourceBook    String   @default("")
+  url           String   @default("")
+  searchText    String   @default("")
+  /// Extra mechanics: attack type, save, damage formula.
+  mechanics     Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([ownerId])
+  @@index([level])
+}
