@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  ArrowUpCircle,
   Check,
   CloudOff,
   Dices,
@@ -13,6 +14,7 @@ import {
   MoreHorizontal,
   Redo2,
   RefreshCw,
+  Settings,
   Sun,
   Trash2,
   Undo2,
@@ -25,13 +27,16 @@ import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import { characterExport, downloadJson } from "@/lib/download";
 import { XP_BY_LEVEL } from "@/lib/rules/constants";
+import { STAT_INFO } from "@/lib/rules/glossary";
 import { Button } from "@/components/ui/button";
 import { CommitInput, Input } from "@/components/ui/input";
-import { Menu, Popover } from "@/components/ui/overlay";
+import { Menu, Popover, Tip } from "@/components/ui/overlay";
 import { AvatarImage } from "@/components/ui/avatar-image";
 import { useAsk } from "@/components/ui/prompt";
 import { useTheme } from "@/components/theme";
+import { useOpenDialog } from "./dialogs-context";
 import { RollDetail } from "./dice";
+import type { PanelId } from "./sheet-app";
 import { makeEvent, useChange, useComputed, useDoc, useSheet, useSheetApi, type SheetStore } from "./store";
 
 /** Replaces the local document with the latest saved version. */
@@ -123,8 +128,9 @@ function RollHistory() {
     <Popover
       align="end"
       className="w-96"
+      tip="История бросков"
       trigger={
-        <Button size="icon" variant="ghost" aria-label="История бросков" title="История бросков">
+        <Button size="icon" variant="ghost" aria-label="История бросков">
           <Dices />
         </Button>
       }
@@ -253,46 +259,72 @@ function XpBar() {
   const sheet = useComputed();
   const change = useChange();
   const ask = useAsk();
+  const open = useOpenDialog();
   const level = sheet.level;
   const xp = doc.info.xp;
   const next = XP_BY_LEVEL[Math.min(20, level + 1)] ?? null;
   const prev = XP_BY_LEVEL[Math.min(20, level)] ?? 0;
   const progress = next && next > prev ? Math.max(0, Math.min(1, (xp - prev) / (next - prev))) : 1;
-  const canLevel = next !== null && level < 20 && xp >= next;
+  const canLevel = next !== null && level < 20 && xp >= next && doc.classes.length > 0;
+  const tip = (
+    <>
+      <div className="font-semibold">Опыт</div>
+      <div className="text-muted">{STAT_INFO.xp}</div>
+      {next !== null && level < 20 && (
+        <div className="mt-1">
+          До {level + 1} уровня: {Math.max(0, next - xp).toLocaleString("ru")} XP
+        </div>
+      )}
+      <div className="mt-1 text-faint">Нажмите, чтобы добавить опыт</div>
+    </>
+  );
   return (
-    <button
-      type="button"
-      className="group flex min-w-36 flex-1 flex-col gap-1 text-left sm:flex-none"
-      title="Добавить опыт"
-      onClick={async () => {
-        const r = await ask.amount({ title: "Опыт", direction: "gain", requireReason: doc.settings.requireReasons, unit: "XP" });
-        if (!r) return;
-        const after = Math.max(0, xp + r.delta);
-        change(
-          (d) => {
-            d.info.xp = after;
-          },
-          makeEvent("xp", `Опыт: ${xp.toLocaleString("ru")} → ${after.toLocaleString("ru")} (${r.delta > 0 ? "+" : ""}${r.delta})`, r.reason),
-        );
-        const target = XP_BY_LEVEL[Math.min(20, level + 1)];
-        if (level < 20 && after >= target) toast.success("Опыта хватает на новый уровень! Повысьте уровень во вкладке «Класс».");
-      }}
-    >
-      <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted">
-        <span>
-          XP {xp.toLocaleString("ru")}
-          {next !== null && level < 20 && <span className="text-faint"> / {next.toLocaleString("ru")}</span>}
-        </span>
-        {canLevel && <span className="font-semibold text-good">новый уровень!</span>}
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-panel-3">
-        <div className={cn("h-full rounded-full transition-all", canLevel ? "bg-good" : "bg-accent group-hover:bg-accent-strong")} style={{ width: `${progress * 100}%` }} />
-      </div>
-    </button>
+    <div className="flex min-w-36 flex-1 items-center gap-1.5 sm:flex-none">
+      <Tip content={tip} side="bottom">
+        <button
+          type="button"
+          className="group flex min-w-0 flex-1 flex-col gap-1 text-left"
+          aria-label="Добавить опыт"
+          onClick={async () => {
+            const r = await ask.amount({ title: "Опыт", direction: "gain", requireReason: doc.settings.requireReasons, unit: "XP" });
+            if (!r) return;
+            const after = Math.max(0, xp + r.delta);
+            change(
+              (d) => {
+                d.info.xp = after;
+              },
+              makeEvent("xp", `Опыт: ${xp.toLocaleString("ru")} → ${after.toLocaleString("ru")} (${r.delta > 0 ? "+" : ""}${r.delta})`, r.reason),
+            );
+            const target = XP_BY_LEVEL[Math.min(20, level + 1)];
+            if (level < 20 && after >= target && doc.classes.length)
+              toast.success("Опыта хватает на новый уровень!", {
+                action: { label: "Повысить", onClick: () => open({ kind: "level-up" }) },
+              });
+          }}
+        >
+          <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted">
+            <span>
+              XP {xp.toLocaleString("ru")}
+              {next !== null && level < 20 && <span className="text-faint"> / {next.toLocaleString("ru")}</span>}
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-panel-3">
+            <div className={cn("h-full rounded-full transition-all", canLevel ? "bg-good" : "bg-accent group-hover:bg-accent-strong")} style={{ width: `${progress * 100}%` }} />
+          </div>
+        </button>
+      </Tip>
+      {canLevel && (
+        <Tip content="Опыта хватает: выберите класс, который получит уровень">
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-good" onClick={() => open({ kind: "level-up" })}>
+            <ArrowUpCircle /> Уровень
+          </Button>
+        </Tip>
+      )}
+    </div>
   );
 }
 
-export function SheetHeader({ onTab }: { onTab: (tab: string) => void }) {
+export function SheetHeader({ onTab, onPanel }: { onTab: (tab: string) => void; onPanel: (panel: PanelId | null) => void }) {
   const doc = useDoc();
   const sheet = useComputed();
   const change = useChange();
@@ -348,13 +380,31 @@ export function SheetHeader({ onTab }: { onTab: (tab: string) => void }) {
         {!doc.settings.hidden.includes("info.xp") && <XpBar />}
         <div className="ml-auto flex items-center gap-1">
           <SaveIndicator />
-          <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo} aria-label="Отменить" title="Отменить (Ctrl+Z)">
-            <Undo2 />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo} aria-label="Повторить" title="Повторить (Ctrl+Shift+Z)">
-            <Redo2 />
-          </Button>
+          <Tip content="Отменить последнее изменение (Ctrl+Z)">
+            <span className="inline-flex">
+              <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo} aria-label="Отменить">
+                <Undo2 />
+              </Button>
+            </span>
+          </Tip>
+          <Tip content="Вернуть отменённое (Ctrl+Shift+Z)">
+            <span className="inline-flex">
+              <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo} aria-label="Повторить">
+                <Redo2 />
+              </Button>
+            </span>
+          </Tip>
           <RollHistory />
+          <Tip content="Журнал изменений: что, когда и за что менялось. С поиском">
+            <Button size="icon" variant="ghost" aria-label="Журнал" onClick={() => onPanel("journal")} className="max-sm:hidden">
+              <History />
+            </Button>
+          </Tip>
+          <Tip content="Настройки листа: редакция правил, что показывать, файл персонажа">
+            <Button size="icon" variant="ghost" aria-label="Настройки" onClick={() => onPanel("settings")} className="max-sm:hidden">
+              <Settings />
+            </Button>
+          </Tip>
           <Menu
             trigger={
               <Button size="icon" variant="ghost" aria-label="Ещё">
@@ -362,7 +412,8 @@ export function SheetHeader({ onTab }: { onTab: (tab: string) => void }) {
               </Button>
             }
             items={[
-              { label: "Журнал изменений", icon: <History />, onSelect: () => onTab("journal") },
+              { label: "Журнал изменений", icon: <History />, onSelect: () => onPanel("journal") },
+              { label: "Настройки листа", icon: <Settings />, onSelect: () => onPanel("settings") },
               { label: "Скачать JSON", icon: <Download />, onSelect: exportJson },
               {
                 label: "Загрузить с сервера",

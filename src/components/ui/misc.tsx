@@ -40,9 +40,9 @@ export function Panel({
   return (
     <section id={id} className={cn("rounded-xl border border-line bg-panel", className)}>
       {(title || actions) && (
-        <header className="flex min-h-11 items-center justify-between gap-2 border-b border-line px-4 py-2">
+        <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-line px-4 py-2">
           <h3 className="font-display text-base font-bold">{title}</h3>
-          {actions && <div className="flex items-center gap-1">{actions}</div>}
+          {actions && <div className="ml-auto flex flex-wrap items-center justify-end gap-1">{actions}</div>}
         </header>
       )}
       <div className={cn("p-4", bodyClassName)}>{children}</div>

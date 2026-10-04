@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { Dialog, DropdownMenu, Popover as RadixPopover, Tooltip } from "radix-ui";
+import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
 
@@ -69,8 +70,12 @@ export function Modal({
   );
 }
 
+const TIP_CONTENT_CLASS =
+  "z-[60] max-w-xs rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-xs leading-relaxed text-text shadow-[var(--shadow)]";
+
 export function Popover({
   trigger,
+  tip,
   children,
   open,
   onOpenChange,
@@ -80,6 +85,8 @@ export function Popover({
   modal,
 }: {
   trigger: React.ReactNode;
+  /** Hover hint for the trigger; hidden while the popover is open. */
+  tip?: React.ReactNode;
   children: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -88,9 +95,31 @@ export function Popover({
   className?: string;
   modal?: boolean;
 }) {
+  const [innerOpen, setInnerOpen] = useState(false);
+  const [tipOpen, setTipOpen] = useState(false);
+  const isOpen = open ?? innerOpen;
+  const setOpen = (v: boolean) => {
+    setInnerOpen(v);
+    onOpenChange?.(v);
+  };
+  const triggerEl = <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger>;
   return (
-    <RadixPopover.Root open={open} onOpenChange={onOpenChange} modal={modal}>
-      <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger>
+    <RadixPopover.Root open={isOpen} onOpenChange={setOpen} modal={modal}>
+      {tip ? (
+        <Tooltip.Root open={tipOpen && !isOpen} onOpenChange={setTipOpen}>
+          {/* Focus returns to the trigger when the popover closes; that must not pop the hint. */}
+          <Tooltip.Trigger asChild onFocus={(e) => e.preventDefault()}>
+            {triggerEl}
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content side="top" sideOffset={5} collisionPadding={8} className={TIP_CONTENT_CLASS}>
+              {tip}
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      ) : (
+        triggerEl
+      )}
       <RadixPopover.Portal>
         <RadixPopover.Content
           side={side}
@@ -128,19 +157,56 @@ export function Tip({
     <Tooltip.Root>
       <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content
-          side={side}
-          sideOffset={5}
-          collisionPadding={8}
-          className={cn(
-            "z-[60] max-w-xs rounded-lg border border-line bg-panel-2 px-2.5 py-1.5 text-xs leading-relaxed text-text shadow-[var(--shadow)]",
-            className,
-          )}
-        >
+        <Tooltip.Content side={side} sideOffset={5} collisionPadding={8} className={cn(TIP_CONTENT_CLASS, className)}>
           {content}
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
+  );
+}
+
+/** Full-height panel sliding in from the right, for secondary screens (journal, settings). */
+export function Drawer({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="anim-fade fixed inset-0 z-40 bg-black/45" />
+        <Dialog.Content
+          className={cn(
+            "anim-slide-in fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col border-l border-line bg-bg shadow-[var(--shadow)] focus:outline-none",
+          )}
+        >
+          <header className="flex items-start justify-between gap-4 border-b border-line bg-panel px-5 py-3.5">
+            <div className="min-w-0">
+              <Dialog.Title className="font-display text-lg leading-snug font-bold">{title}</Dialog.Title>
+              {description ? (
+                <Dialog.Description className="mt-0.5 text-sm text-muted">{description}</Dialog.Description>
+              ) : (
+                <Dialog.Description className="sr-only">{typeof title === "string" ? title : "Панель"}</Dialog.Description>
+              )}
+            </div>
+            <Dialog.Close asChild>
+              <Button size="icon-sm" variant="ghost" aria-label="Закрыть" className="-mr-1.5">
+                <X />
+              </Button>
+            </Dialog.Close>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

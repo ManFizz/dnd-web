@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { newAttack, newCounter, newEffect, newFeature, newItem } from "@/lib/rules/defaults";
 import { opsForTarget, targetDef } from "@/lib/rules/targets";
+import { AddClassDialog, LevelUpDialog } from "./class-dialogs";
 import { SheetDialogsContext, type DialogRequest } from "./dialogs-context";
 import { AttackDialog, BonusDialog, CounterDialog, FeatureDialog, ItemDialog, OverrideDialog } from "./editors";
 import { RestDialog } from "./rest-dialog";
@@ -57,6 +58,12 @@ export function SheetDialogs({ children }: { children: React.ReactNode }) {
         break;
       case "rest":
         dialog = <RestDialog key={key} kind={req.rest} onClose={close} />;
+        break;
+      case "add-class":
+        dialog = <AddClassDialog key={key} onClose={close} />;
+        break;
+      case "level-up":
+        dialog = <LevelUpDialog key={key} classId={req.classId} onClose={close} />;
         break;
     }
   }

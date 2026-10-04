@@ -79,7 +79,18 @@ export function CounterCard({ counter }: { counter: Counter }) {
             <Minus />
           </Button>
         </Tip>
-        <Tip content="Изменить на любое число">
+        <Tip
+          content={
+            <>
+              <div>Изменить на любое число: прибавить, списать или задать, с подписью «за что»</div>
+              {max !== null && counter.max.trim() && !/^\d+$/.test(counter.max.trim()) && (
+                <div className="text-muted">
+                  Максимум {fmt(max)} считается по формуле {counter.max}
+                </div>
+              )}
+            </>
+          }
+        >
           <button
             type="button"
             onClick={custom}

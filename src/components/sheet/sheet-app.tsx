@@ -6,11 +6,9 @@ import {
   Dna,
   GraduationCap,
   Hash,
-  History,
   NotebookPen,
   PersonStanding,
   ScrollText,
-  Settings,
   SlidersHorizontal,
   Sparkles,
   Swords,
@@ -19,9 +17,11 @@ import {
 } from "lucide-react";
 import { Component, useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { TAB_INFO } from "@/lib/rules/glossary";
 import type { CharacterDoc } from "@/lib/rules/schema";
 import { RichEnvContext, type RichEnv } from "@/components/rich/context";
 import { Button } from "@/components/ui/button";
+import { Drawer, Tip } from "@/components/ui/overlay";
 import { useRoll } from "./dice";
 import { SheetDialogs } from "./dialogs";
 import { SheetHeader } from "./header";
@@ -60,9 +60,16 @@ export const TABS: TabDef[] = [
   { id: "bonuses", label: "Бонусы", icon: SlidersHorizontal, group: 1 },
   { id: "lore", label: "Лор", icon: ScrollText, group: 2 },
   { id: "notes", label: "Заметки", icon: NotebookPen, group: 2, hide: "tab.notes" },
-  { id: "journal", label: "Журнал", icon: History, group: 2 },
-  { id: "settings", label: "Настройки", icon: Settings, group: 3 },
 ];
+
+/** Technical screens opened from the header instead of the tab bar. */
+export const PANELS = {
+  journal: { title: "Журнал изменений", description: "Все изменения персонажа с подписями «за что получено». Записи появляются сами." },
+  settings: { title: "Настройки листа", description: "Редакция правил, обязательные подписи, лишние механики и файл персонажа." },
+} as const;
+export type PanelId = keyof typeof PANELS;
+
+export const isPanel = (v: string | undefined | null): v is PanelId => v === "journal" || v === "settings";
 
 class TabBoundary extends Component<{ children: React.ReactNode; resetKey: string }, { error: Error | null; key: string }> {
   state = { error: null as Error | null, key: this.props.resetKey };
@@ -88,10 +95,10 @@ class TabBoundary extends Component<{ children: React.ReactNode; resetKey: strin
   }
 }
 
-function TabContent({ tab, onTab }: { tab: string; onTab: (t: string) => void }) {
+function TabContent({ tab, onTab, onPanel }: { tab: string; onTab: (t: string) => void; onPanel: (p: PanelId | null) => void }) {
   switch (tab) {
     case "stats":
-      return <Sidebar />;
+      return <Sidebar onOpenSettings={() => onPanel("settings")} />;
     case "spells":
       return <SpellsTab />;
     case "inventory":
@@ -114,10 +121,6 @@ function TabContent({ tab, onTab }: { tab: string; onTab: (t: string) => void })
       return <LoreTab />;
     case "notes":
       return <NotesTab />;
-    case "journal":
-      return <JournalTab />;
-    case "settings":
-      return <SettingsTab />;
     default:
       return <CombatTab onTab={onTab} />;
   }
@@ -140,26 +143,29 @@ function TabBar({ tab, onTab }: { tab: string; onTab: (t: string) => void }) {
   const doc = useDoc();
   const tabs = TABS.filter((t) => !t.hide || !doc.settings.hidden.includes(t.hide));
   return (
-    <nav className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 lg:overflow-visible" aria-label="Разделы листа">
+    <nav className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 lg:overflow-visible lg:@container" aria-label="Разделы листа">
       <div className="flex w-max min-w-full items-center gap-0.5 rounded-xl border border-line bg-panel p-1 lg:w-auto lg:flex-wrap">
         {tabs.map((t, i) => {
           const Icon = t.icon;
           const gap = i > 0 && tabs[i - 1].group !== t.group;
           return (
             <div key={t.id} className={cn("flex items-center", t.mobileOnly && "lg:hidden")}>
-              {gap && <span className="mx-1 h-5 w-px bg-line" />}
-              <button
-                type="button"
-                onClick={() => onTab(t.id)}
-                aria-current={tab === t.id ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-                  tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel-2 hover:text-text",
-                )}
-              >
-                <Icon className="size-4" />
-                {t.label}
-              </button>
+              {gap && <span className="mx-0.5 h-5 w-px bg-line" />}
+              <Tip content={TAB_INFO[t.id]} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => onTab(t.id)}
+                  aria-current={tab === t.id ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium whitespace-nowrap transition-colors @max-[62rem]:px-1.5",
+                    tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel-2 hover:text-text",
+                  )}
+                >
+                  {/* Icons give way to labels when the desktop tab bar is narrow. */}
+                  <Icon className="size-4 @max-[62rem]:hidden" />
+                  {t.label}
+                </button>
+              </Tip>
             </div>
           );
         })}
@@ -168,9 +174,10 @@ function TabBar({ tab, onTab }: { tab: string; onTab: (t: string) => void }) {
   );
 }
 
-function SheetLayout({ initialTab }: { initialTab: string }) {
+function SheetLayout({ initialTab, initialPanel }: { initialTab: string; initialPanel: PanelId | null }) {
   const doc = useDoc();
   const [tab, setTab] = useState(initialTab);
+  const [panel, setPanel] = useState<PanelId | null>(initialPanel);
   const onTab = useCallback((t: string) => {
     setTab(t);
     const url = new URL(window.location.href);
@@ -178,21 +185,29 @@ function SheetLayout({ initialTab }: { initialTab: string }) {
     else url.searchParams.set("tab", t);
     window.history.replaceState(window.history.state, "", url);
   }, []);
+  const onPanel = useCallback((p: PanelId | null) => {
+    setPanel(p);
+    const url = new URL(window.location.href);
+    if (p) url.searchParams.set("panel", p);
+    else url.searchParams.delete("panel");
+    if (isPanel(url.searchParams.get("tab"))) url.searchParams.delete("tab");
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
   const def = TABS.find((t) => t.id === tab);
   const active = !def || (def.hide && doc.settings.hidden.includes(def.hide)) ? "combat" : tab;
   return (
     <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-3 py-4 sm:px-5">
-      <SheetHeader onTab={onTab} />
+      <SheetHeader onTab={onTab} onPanel={onPanel} />
       <Vitals />
-      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)] wide:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
         <aside className="hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1">
-          <Sidebar />
+          <Sidebar onOpenSettings={() => onPanel("settings")} />
         </aside>
         <main className="flex min-w-0 flex-col gap-4">
           <TabBar tab={active} onTab={onTab} />
           <TabBoundary resetKey={active}>
             <div className={cn(active === "stats" && "lg:hidden")}>
-              <TabContent tab={active === "stats" ? "stats" : active} onTab={onTab} />
+              <TabContent tab={active === "stats" ? "stats" : active} onTab={onTab} onPanel={onPanel} />
             </div>
             {active === "stats" && (
               <div className="hidden lg:block">
@@ -202,16 +217,35 @@ function SheetLayout({ initialTab }: { initialTab: string }) {
           </TabBoundary>
         </main>
       </div>
+      {(Object.keys(PANELS) as PanelId[]).map((p) => (
+        <Drawer key={p} open={panel === p} onOpenChange={(o) => onPanel(o ? p : null)} title={PANELS[p].title} description={PANELS[p].description}>
+          <TabBoundary resetKey={p}>{p === "journal" ? <JournalTab /> : <SettingsTab />}</TabBoundary>
+        </Drawer>
+      ))}
     </div>
   );
 }
 
-export function SheetApp({ id, doc, version, initialTab }: { id: string; doc: CharacterDoc; version: number; initialTab?: string }) {
+export function SheetApp({
+  id,
+  doc,
+  version,
+  initialTab,
+  initialPanel,
+}: {
+  id: string;
+  doc: CharacterDoc;
+  version: number;
+  initialTab?: string;
+  initialPanel?: string;
+}) {
+  // Old links used ?tab=journal and ?tab=settings; they open the panels now.
+  const panel = isPanel(initialPanel) ? initialPanel : isPanel(initialTab) ? initialTab : null;
   return (
     <SheetProvider initial={{ id, doc, version }}>
       <RichEnvProvider>
         <SheetDialogs>
-          <SheetLayout initialTab={initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : "combat"} />
+          <SheetLayout initialTab={initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : "combat"} initialPanel={panel} />
         </SheetDialogs>
       </RichEnvProvider>
     </SheetProvider>

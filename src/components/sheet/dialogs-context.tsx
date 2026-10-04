@@ -18,7 +18,9 @@ export type DialogRequest =
   | { kind: "spell-custom" }
   | { kind: "spell-match" }
   | { kind: "cast"; entryId: string }
-  | { kind: "rest"; rest: "short" | "long" };
+  | { kind: "rest"; rest: "short" | "long" }
+  | { kind: "add-class" }
+  | { kind: "level-up"; classId?: string };
 
 export const SheetDialogsContext = createContext<(req: DialogRequest) => void>(() => {});
 

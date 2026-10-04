@@ -99,12 +99,22 @@ export async function deleteCharacter(id: string, userId: string) {
   if (res.count === 0) throw new HttpError(404, "Персонаж не найден");
 }
 
-export async function listEvents(id: string, userId: string, opts: { cursor?: string; limit?: number; kind?: string }) {
+export async function listEvents(id: string, userId: string, opts: { cursor?: string; limit?: number; kind?: string; q?: string }) {
   const owner = await prisma.character.findUnique({ where: { id }, select: { ownerId: true } });
   if (!owner || owner.ownerId !== userId) throw new HttpError(404, "Персонаж не найден");
   const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
+  const q = opts.q?.trim().slice(0, 200);
   const rows = await prisma.characterEvent.findMany({
-    where: { characterId: id, ...(opts.kind ? { kind: opts.kind } : {}) },
+    where: {
+      characterId: id,
+      ...(opts.kind ? { kind: opts.kind } : {}),
+      // Search looks at both the summary and the "за что" reason.
+      ...(q
+        ? {
+            OR: [{ summary: { contains: q, mode: "insensitive" as const } }, { reason: { contains: q, mode: "insensitive" as const } }],
+          }
+        : {}),
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),

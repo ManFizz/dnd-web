@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import { newId } from "@/lib/rules/ids";
+import { spellClassId } from "@/lib/rules/multiclass";
 import type { CharacterSpell, SpellData } from "@/lib/rules/schema";
 import { docToText } from "@/lib/rules/richtext";
 import {
@@ -42,6 +43,7 @@ export function newCharacterSpell(partial: Partial<CharacterSpell>): CharacterSp
     override: null,
     custom: null,
     notes: "",
+    classId: "",
     ...partial,
   };
 }
@@ -50,12 +52,15 @@ export function newCharacterSpell(partial: Partial<CharacterSpell>): CharacterSp
 
 export function SpellLibraryDialog({ onClose }: { onClose: () => void }) {
   const doc = useDoc();
+  const sheet = useComputed();
   const change = useChange();
   const addLibrary = useSheet((s) => s.addLibrary);
+  const casters = sheet.spell.byClass;
   const defaultClass = doc.classes[0]?.name.toLowerCase() ?? "";
   const [q, setQ] = useState("");
   const [level, setLevel] = useState("");
   const [cls, setCls] = useState(defaultClass);
+  const [forClass, setForClass] = useState("");
   const search = useSpellSearch({ q, level, cls }, 40);
   const [openId, setOpenId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, LibrarySpell>>({});
@@ -77,7 +82,7 @@ export function SpellLibraryDialog({ onClose }: { onClose: () => void }) {
     addLibrary([full]);
     change(
       (d) => {
-        d.spellcasting.spells.push(newCharacterSpell({ spellId: s.id, name: s.nameRu, level: s.level }));
+        d.spellcasting.spells.push(newCharacterSpell({ spellId: s.id, name: s.nameRu, level: s.level, classId: forClass }));
       },
       makeEvent("spell", `Добавлено заклинание «${s.nameRu}»`),
     );
@@ -103,8 +108,24 @@ export function SpellLibraryDialog({ onClose }: { onClose: () => void }) {
           <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название по-русски или по-английски" className="pl-9" />
         </div>
         <Select value={level} onChange={(e) => setLevel(e.target.value)} options={[{ value: "", label: "Любой уровень" }, ...LEVEL_OPTIONS]} />
-        <Input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="Класс" />
+        <Input value={cls} onChange={(e) => setCls(e.target.value)} placeholder="Класс" aria-label="Фильтр по классу" />
       </div>
+      {casters.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted">Добавлять для класса</span>
+          <Select
+            value={forClass}
+            onChange={(e) => {
+              setForClass(e.target.value);
+              const c = casters.find((x) => x.id === e.target.value);
+              if (c) setCls(c.name.toLowerCase());
+            }}
+            options={[{ value: "", label: "Определить по списку классов" }, ...casters.map((c) => ({ value: c.id, label: c.name }))]}
+            className="w-64"
+            aria-label="Добавлять для класса"
+          />
+        </div>
+      )}
       {search.error && <p className="mb-2 text-sm text-danger">{search.error}</p>}
       {emptyLibrary ? (
         <Empty title="Библиотека заклинаний пока пуста">
@@ -178,6 +199,7 @@ export function SpellLibraryDialog({ onClose }: { onClose: () => void }) {
 
 export function SpellEntryDialog({ entryId, onClose }: { entryId: string; onClose: () => void }) {
   const doc = useDoc();
+  const sheet = useComputed();
   const change = useChange();
   const ask = useAsk();
   const library = useSheet((s) => s.library);
@@ -192,6 +214,7 @@ export function SpellEntryDialog({ entryId, onClose }: { entryId: string; onClos
     inBook: entry?.inBook ?? false,
     source: entry?.source ?? "",
     notes: entry?.notes ?? "",
+    classId: entry?.classId ?? "",
   }));
   const [tab, setTab] = useState<"main" | "spell">("main");
   if (!entry) return null;
@@ -233,6 +256,9 @@ export function SpellEntryDialog({ entryId, onClose }: { entryId: string; onClos
   };
 
   const overriddenCount = base ? Object.keys(diffSpell(base, form) ?? {}).length : 0;
+  const casters = sheet.spell.byClass;
+  const inferred = casters.length > 1 ? spellClassId({ classId: "" }, doc.classes.filter((c) => casters.some((x) => x.id === c.id)), form.classes) : null;
+  const inferredName = casters.find((c) => c.id === inferred)?.name;
   return (
     <Modal
       open
@@ -271,6 +297,18 @@ export function SpellEntryDialog({ entryId, onClose }: { entryId: string; onClos
             <Checkbox checked={meta.alwaysPrepared} onChange={(e) => setMeta({ ...meta, alwaysPrepared: e.target.checked })} label="Всегда подготовлено" />
             <Checkbox checked={meta.inBook} onChange={(e) => setMeta({ ...meta, inBook: e.target.checked })} label="В книге заклинаний" />
           </div>
+          {casters.length > 1 && (
+            <Field label="Класс заклинания" hint="От класса зависят СЛ спасброска и бонус атаки">
+              <Select
+                value={meta.classId}
+                onChange={(e) => setMeta({ ...meta, classId: e.target.value })}
+                options={[
+                  { value: "", label: inferredName ? `Сам по списку классов: ${inferredName}` : "Общая характеристика (вкладка «Заклинания»)" },
+                  ...casters.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+            </Field>
+          )}
           <Field label="Откуда" hint="Класс, раса, предмет, черта">
             <Input value={meta.source} onChange={(e) => setMeta({ ...meta, source: e.target.value })} placeholder="Волшебник, Некрономикон…" />
           </Field>

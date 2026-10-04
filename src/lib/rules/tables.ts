@@ -67,15 +67,19 @@ export function casterLevelContribution(c: Pick<ClassEntry, "caster" | "level">,
   }
 }
 
-/** Slot maximums for levels 1..9 (array index = spell level, index 0 unused). */
-export function computeSlots(classes: Pick<ClassEntry, "caster" | "level">[]): number[] {
+/** Combined spellcaster level used for the multiclass slot table (pact magic excluded). */
+export function spellcasterLevel(classes: Pick<ClassEntry, "caster" | "level">[]): number {
   const casters = classes.filter((c) => c.caster !== "none" && c.caster !== "pact");
   const multiclass = casters.length > 1;
-  const level = Math.min(
+  return Math.min(
     20,
     casters.reduce((acc, c) => acc + casterLevelContribution(c, multiclass), 0),
   );
-  const row = SLOTS_BY_CASTER_LEVEL[level] ?? [];
+}
+
+/** Slot maximums for levels 1..9 (array index = spell level, index 0 unused). */
+export function computeSlots(classes: Pick<ClassEntry, "caster" | "level">[]): number[] {
+  const row = SLOTS_BY_CASTER_LEVEL[spellcasterLevel(classes)] ?? [];
   return [0, ...Array.from({ length: 9 }, (_, i) => row[i] ?? 0)];
 }
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeSheet } from "@/lib/rules/compute";
 import { docToText } from "@/lib/rules/richtext";
-import { convertLssDoc, importLss, mapLssTarget, splitSections } from "../lss";
+import { convertLssDoc, importLss, mapLssTarget, splitLssClasses, splitSections } from "../lss";
 
 const fixture = readFileSync(join(__dirname, "fixtures", "lss-wizard.json"), "utf8");
 
@@ -132,6 +132,43 @@ describe("LSS helpers", () => {
       },
     });
     expect(splitSections(doc).map((s) => s.title)).toEqual(["", "Первый", "Второй раздел"]);
+  });
+
+  it("splits multiclass text into classes", () => {
+    expect(splitLssClasses("Воин 5 / Волшебник 3", "Мастер боевых искусств / Школа Иллюзий", 8)).toEqual([
+      { name: "Воин", level: 5, subclass: "Мастер боевых искусств" },
+      { name: "Волшебник", level: 3, subclass: "Школа Иллюзий" },
+    ]);
+    expect(splitLssClasses("Паладин (6), Колдун (2)", "Клятва мести", 8)).toEqual([
+      { name: "Паладин", level: 6, subclass: "Клятва мести" },
+      { name: "Колдун", level: 2, subclass: "" },
+    ]);
+    expect(splitLssClasses("Fighter 2 + Wizard 11 ур.", "", 13).map((c) => [c.name, c.level])).toEqual([
+      ["Fighter", 2],
+      ["Wizard", 11],
+    ]);
+    expect(splitLssClasses("Волшебник 13", "", 13)).toEqual([{ name: "Волшебник", level: 13, subclass: "" }]);
+    expect(splitLssClasses("Волшебник", "Проклятокровый", 13)).toEqual([{ name: "Волшебник", level: 13, subclass: "Проклятокровый" }]);
+    // Without levels the split is ambiguous: keep the text for the player to fix.
+    expect(splitLssClasses("Воин / Волшебник", "", 8)).toEqual([{ name: "Воин / Волшебник", level: 8, subclass: "" }]);
+    expect(splitLssClasses("Воин 15 / Волшебник 9", "", 20)).toHaveLength(1);
+  });
+
+  it("imports multiclass characters with their own hit dice and casting class", () => {
+    const outer = JSON.parse(fixture) as { data: string };
+    const data = JSON.parse(outer.data) as { info: { charClass: { value: string } } };
+    data.info.charClass.value = "Воин 2 / Волшебник 11";
+    const { doc, summary } = importLss(JSON.stringify({ ...outer, data: JSON.stringify(data) }));
+    expect(doc.classes.map((c) => [c.name, c.level, c.hitDie, c.preset])).toEqual([
+      ["Воин", 2, 10, "fighter"],
+      ["Волшебник", 11, 6, "wizard"],
+    ]);
+    expect(doc.classes[0].spellAbility).toBe("");
+    expect(doc.classes[1].spellAbility).toBe("int");
+    expect(summary).toContain("Мультикласс: Воин 2 / Волшебник 11");
+    const sheet = computeSheet(doc);
+    expect(sheet.level).toBe(13);
+    expect(sheet.spell.byClass.map((c) => c.name)).toEqual(["Волшебник"]);
   });
 
   it("rejects files that are not character exports", () => {

@@ -95,10 +95,11 @@ test("wizard creates a character and the sheet applies item effects", async ({ p
   await prompt.getByRole("button", { name: "Добавить" }).click();
   await expect(page.getByRole("button", { name: "Рубины: 1" })).toBeVisible();
 
-  // Unused mechanics can be hidden.
+  // Unused mechanics can be hidden; settings open from the header.
   await expect(page.locator("aside").getByText("Религия")).toBeVisible();
-  await tab(page, "Настройки").click();
-  await page.getByRole("checkbox", { name: /Религия/ }).uncheck();
+  await page.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.getByRole("dialog", { name: "Настройки листа" }).getByRole("checkbox", { name: /Религия/ }).uncheck();
+  await page.keyboard.press("Escape");
   await expect(page.locator("aside").getByText("Религия")).toHaveCount(0);
 
   // Everything survives a reload.
@@ -106,9 +107,41 @@ test("wizard creates a character and the sheet applies item effects", async ({ p
   await page.reload();
   await expect(page.getByRole("group", { name: "КД" })).toContainText("13");
   await expect(page.locator("aside").getByText("Религия")).toHaveCount(0);
-  await tab(page, "Журнал").click();
-  await expect(page.getByText("Нашли в сундуке")).toBeVisible();
-  await expect(page.getByText(/Плащ защиты/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Журнал", exact: true }).click();
+  const journal = page.getByRole("dialog", { name: "Журнал изменений" });
+  await expect(journal.getByText("Нашли в сундуке")).toBeVisible();
+  await expect(journal.getByText(/Плащ защиты/).first()).toBeVisible();
+  // Search looks through summaries and reasons.
+  await journal.getByLabel("Поиск по журналу").fill("сундук");
+  await expect(journal.getByText(/Плащ защиты/)).toHaveCount(0);
+  await expect(journal.getByText("Нашли в сундуке")).toBeVisible();
+});
+
+test("multiclass: a second class and a level up", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Открыть Мирра" }).click();
+  await expect(page.getByLabel("Имя персонажа")).toHaveValue("Мирра");
+  await tab(page, "Класс").click();
+  await page.getByRole("button", { name: "Мультикласс" }).click();
+  const add = page.getByRole("dialog", { name: "Новый класс (мультикласс)" });
+  await add.getByLabel("Класс", { exact: true }).selectOption("fighter");
+  // Human wizard with the standard array: DEX 14 meets the fighter requirement.
+  await expect(add.getByText(/Требование Сила 13 или Ловкость 13 выполнено/)).toBeVisible();
+  await add.getByLabel(/За что/).fill("Обучение у капитана стражи");
+  await add.getByRole("button", { name: "Добавить класс" }).click();
+  await expect(add).toBeHidden();
+  await expect(page.getByText("Волшебник 1 / Воин 1").first()).toBeVisible();
+  await expect(page.getByText("1к10 + 1к6")).toBeVisible();
+
+  await page.getByRole("button", { name: "Повысить уровень" }).first().click();
+  const up = page.getByRole("dialog", { name: "Повышение уровня" });
+  await up.getByRole("radio", { name: /Волшебник/ }).click();
+  await expect(up.getByText(/Ячейки 1 уровня: 2 → 3/)).toBeVisible();
+  await up.getByLabel(/За что/).fill("Победа над культистами");
+  await up.getByRole("button", { name: "Повысить" }).click();
+  await expect(up).toBeHidden();
+  await expect(page.getByText("Волшебник 2 / Воин 1").first()).toBeVisible();
+  await waitSaved(page);
 });
 
 test("imports a Long Story Short export", async ({ page }) => {

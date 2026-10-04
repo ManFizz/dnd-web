@@ -180,15 +180,97 @@ export function StatDetails({ title, stat, rollLabel, bonusTarget, overridable =
   );
 }
 
+/** Compact breakdown for hover hints: what the number is and where it comes from. */
+export function StatTipBody({
+  title,
+  stat,
+  signed = true,
+  info,
+  hint,
+}: {
+  title: React.ReactNode;
+  stat: Stat;
+  signed?: boolean;
+  info?: React.ReactNode;
+  hint?: string;
+}) {
+  const value = signed ? formatStat(stat) : String(stat.value);
+  return (
+    <div className="flex min-w-52 flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-semibold">{title}</span>
+        <span className={cn("font-display text-sm font-bold tabular-nums", stat.overridden && "text-accent")}>{value}</span>
+      </div>
+      {info && <div className="text-muted">{info}</div>}
+      {stat.parts.length > 0 && (
+        <div className="flex flex-col gap-0.5 border-t border-line pt-1.5">
+          {stat.parts.map((p, i) => (
+            <div key={i} className={cn("flex items-baseline justify-between gap-3", p.kind === "override" && "text-accent")}>
+              <span className="min-w-0">
+                {p.label || p.source}
+                {p.label && p.source && p.source !== p.label && p.source !== "Основа" && <span className="text-faint"> · {p.source}</span>}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {KIND_LABEL[p.kind] && <span className="text-faint">{KIND_LABEL[p.kind]} </span>}
+                <span className="font-semibold">{partText(p, signed)}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {(stat.adv.length > 0 || stat.dis.length > 0 || stat.notes.length > 0) && (
+        <div className="flex flex-col gap-0.5 border-t border-line pt-1.5">
+          {stat.adv.map((n, i) => (
+            <div key={`a${i}`}>
+              <span className="text-good">Преимущество</span> {n.text && `· ${n.text}`} <span className="text-faint">({n.source})</span>
+            </div>
+          ))}
+          {stat.dis.map((n, i) => (
+            <div key={`d${i}`}>
+              <span className="text-danger">Помеха</span> {n.text && `· ${n.text}`} <span className="text-faint">({n.source})</span>
+            </div>
+          ))}
+          {stat.notes.map((n, i) => (
+            <div key={`n${i}`}>
+              {n.text} <span className="text-faint">({n.source})</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {hint && <div className="text-faint">{hint}</div>}
+    </div>
+  );
+}
+
 /** A clickable stat value that opens its breakdown with roll and edit actions. */
 export function StatPopover({
   trigger,
   className,
+  info,
+  tip = true,
+  tipTitle,
   ...details
-}: StatDetailsProps & { trigger: React.ReactNode; className?: string }) {
+}: StatDetailsProps & {
+  trigger: React.ReactNode;
+  className?: string;
+  /** What the stat means, shown in the hover hint. */
+  info?: React.ReactNode;
+  /** Set to false to skip the hover hint. */
+  tip?: boolean;
+  tipTitle?: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
+  const hint = tip ? (
+    <StatTipBody
+      title={tipTitle ?? details.title}
+      stat={details.stat}
+      signed={details.signed}
+      info={info}
+      hint={details.rollLabel ? "Нажмите: бросок, разбор и правка" : "Нажмите: разбор и правка"}
+    />
+  ) : undefined;
   return (
-    <Popover open={open} onOpenChange={setOpen} trigger={trigger} className={cn("w-80", className)}>
+    <Popover open={open} onOpenChange={setOpen} trigger={trigger} tip={hint} className={cn("w-80", className)}>
       <StatDetails {...details} onAction={() => setOpen(false)} />
     </Popover>
   );

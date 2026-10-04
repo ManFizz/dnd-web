@@ -85,6 +85,11 @@
   --font-display: var(--font-alegreya), Georgia, serif;
 }
 
+/* Wide enough for the two-column skills sidebar next to the tabs. */
+@theme {
+  --breakpoint-wide: 72rem;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -136,6 +141,22 @@ input[type="number"] {
 }
 .anim-pop[data-state="open"] {
   animation: pop-in 140ms ease-out;
+}
+@keyframes slide-in {
+  from {
+    translate: 24px 0;
+    opacity: 0;
+  }
+}
+.anim-slide-in[data-state="open"] {
+  animation: slide-in 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade[data-state="open"],
+  .anim-pop[data-state="open"],
+  .anim-slide-in[data-state="open"] {
+    animation: none;
+  }
 }
 
 /* Rich text: rendered documents and the editor share these styles. */

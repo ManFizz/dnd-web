@@ -1,6 +1,6 @@
 "use client";
 
-import { Dices } from "lucide-react";
+import { Dices, X } from "lucide-react";
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
@@ -42,11 +42,20 @@ function describe(result: RollResult): string {
   return `${dice}${constant}`;
 }
 
-function RollToast({ entry }: { entry: RollEntry }) {
+function RollToast({ entry, onClose }: { entry: RollEntry; onClose: () => void }) {
   const crit = entry.natural === 20;
   const fumble = entry.natural === 1;
   return (
-    <div className="flex w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-xl border border-line bg-panel p-3 text-text shadow-[var(--shadow)]">
+    <div className="relative flex w-[min(360px,calc(100vw-32px))] items-center gap-3 rounded-xl border border-line bg-panel p-3 pr-9 text-text shadow-[var(--shadow)]">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Закрыть"
+        title="Закрыть"
+        className="absolute top-1.5 right-1.5 rounded-md p-1 text-faint transition-colors hover:bg-panel-2 hover:text-text"
+      >
+        <X className="size-4" />
+      </button>
       <div
         className={cn(
           "flex size-12 shrink-0 items-center justify-center rounded-lg font-display text-2xl font-bold tabular-nums",
@@ -115,7 +124,7 @@ export function useRoll() {
       }
       const entry: RollEntry = { id: newId("r"), label: req.label, detail: req.detail, result, mode: req.d20 ?? "normal", natural, at: Date.now() };
       pushRoll(entry);
-      toast.custom(() => <RollToast entry={entry} />, { duration: 6000 });
+      toast.custom((id) => <RollToast entry={entry} onClose={() => toast.dismiss(id)} />, { duration: 6000 });
       return entry;
     },
     [pushRoll],

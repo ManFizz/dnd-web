@@ -1,17 +1,18 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, ChevronDown, ChevronUp, Flag, Plus, Trash2 } from "lucide-react";
 import { ABILITIES, ABILITY_LABELS, type Ability } from "@/lib/rules/constants";
-import { applyClassPreset, classEntryFromPreset } from "@/lib/rules/presets";
-import type { CharacterDoc, ClassEntry } from "@/lib/rules/schema";
+import { makeStartingClass, prerequisiteIssues } from "@/lib/rules/multiclass";
+import type { ClassEntry } from "@/lib/rules/schema";
 import { CLASS_CASTER_TYPES } from "@/lib/rules/schema";
-import { CLASS_PRESETS, findClassPreset } from "@/lib/rules/tables";
+import { computePact, findClassPreset, spellcasterLevel } from "@/lib/rules/tables";
 import { RichEditor } from "@/components/rich/editor";
 import { Button } from "@/components/ui/button";
 import { CommitInput, Field, Select } from "@/components/ui/input";
 import { Badge, Panel } from "@/components/ui/misc";
-import { Menu } from "@/components/ui/overlay";
+import { Tip } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
+import { useOpenDialog } from "../dialogs-context";
 import { FeatureList } from "../feature-list";
 import { makeEvent, useChange, useComputed, useDoc } from "../store";
 
@@ -36,33 +37,38 @@ function ClassRow({ entry, index }: { entry: ClassEntry; index: number }) {
       },
       makeEvent(patch.level !== undefined ? "level" : "edit", summary, reason),
     );
-  const setLevel = async (level: number) => {
-    if (level < 1 || level > 20) return;
-    const up = level > entry.level;
-    const reason = up
-      ? await ask.text({ title: `${entry.name}: уровень ${level}`, label: "За что (необязательно)", placeholder: "Конец арки, решение мастера…", reasonSuggestions: true })
-      : "";
-    if (reason === null) return;
-    update({ level }, `${entry.name}: уровень ${entry.level} → ${level}`, reason);
+  const open = useOpenDialog();
+  const lowerLevel = () => {
+    if (entry.level <= 1) return;
+    update({ level: entry.level - 1 }, `${entry.name}: уровень ${entry.level} → ${entry.level - 1}`);
   };
+  const multi = doc.classes.length > 1;
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-panel-2 p-3">
       <div className="flex flex-wrap items-end gap-3">
-        <Field label={index === 0 ? "Класс (основной)" : "Класс"} className="min-w-40 flex-1">
+        <Field label={multi && index === 0 ? "Начальный класс" : "Класс"} className="min-w-40 flex-1">
           <CommitInput value={entry.name} onCommit={(name) => update({ name, preset: findClassPreset(name)?.id ?? entry.preset }, `Класс переименован: ${name}`)} />
         </Field>
         <Field label="Подкласс" className="min-w-40 flex-1">
-          <CommitInput value={entry.subclass} placeholder="Школа Воплощения" onCommit={(subclass) => update({ subclass }, `${entry.name}: подкласс ${subclass}`)} />
+          <CommitInput value={entry.subclass} placeholder="Архетип, школа, клятва…" onCommit={(subclass) => update({ subclass }, `${entry.name}: подкласс ${subclass}`)} />
         </Field>
         <Field label="Уровень">
           <div className="flex items-center gap-1">
-            <Button size="icon" variant="outline" onClick={() => setLevel(entry.level - 1)} disabled={entry.level <= 1} aria-label="Понизить уровень">
+            <Button size="icon" variant="outline" onClick={lowerLevel} disabled={entry.level <= 1} aria-label="Понизить уровень">
               <ChevronDown />
             </Button>
             <span className="w-8 text-center font-display text-xl font-bold tabular-nums">{entry.level}</span>
-            <Button size="icon" variant="outline" onClick={() => setLevel(entry.level + 1)} disabled={entry.level >= 20} aria-label="Повысить уровень">
-              <ChevronUp />
-            </Button>
+            <Tip content="Повысить уровень: покажет, что изменится">
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => open({ kind: "level-up", classId: entry.id })}
+                disabled={entry.level >= 20}
+                aria-label="Повысить уровень"
+              >
+                <ChevronUp />
+              </Button>
+            </Tip>
           </div>
         </Field>
       </div>
@@ -89,8 +95,26 @@ function ClassRow({ entry, index }: { entry: ClassEntry; index: number }) {
           />
         </Field>
       </div>
-      {doc.classes.length > 1 && (
-        <div className="flex justify-end">
+      {multi && (
+        <div className="flex flex-wrap justify-end gap-1">
+          {index > 0 && (
+            <Tip content="Начальный класс даёт максимум кости хитов на 1 уровне. Спасброски и владения при этом не меняются.">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  change(
+                    (d) => {
+                      makeStartingClass(d, entry.id);
+                    },
+                    makeEvent("level", `Начальный класс: «${entry.name}»`),
+                  )
+                }
+              >
+                <Flag /> Сделать начальным
+              </Button>
+            </Tip>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -114,19 +138,53 @@ function ClassRow({ entry, index }: { entry: ClassEntry; index: number }) {
   );
 }
 
+function MulticlassSummary() {
+  const doc = useDoc();
+  const sheet = useComputed();
+  const scores = Object.fromEntries(ABILITIES.map((a) => [a, sheet.abilities[a].score.value])) as Record<Ability, number>;
+  const issues = prerequisiteIssues(scores, doc.classes.map((c) => c.preset).filter(Boolean), doc.settings.edition);
+  const casters = doc.classes.filter((c) => c.caster !== "none" && c.caster !== "pact");
+  const pact = computePact(doc.classes);
+  const rows: [string, React.ReactNode][] = [
+    ["Уровни", doc.classes.map((c) => `${c.name || "Класс"} ${c.level}`).join(" / ")],
+    ["Кости хитов", sheet.hitDice.map((h) => `${h.total}к${h.die}`).join(" + ")],
+  ];
+  if (casters.length > 1) rows.push(["Ячейки заклинаний", `как у заклинателя ${spellcasterLevel(doc.classes)} уровня (общая таблица мультикласса)`]);
+  if (pact.count > 0 && casters.length > 0) rows.push(["Ячейки договора", `отдельно: ${pact.count} × ${pact.level} ур., восстанавливаются на коротком отдыхе`]);
+  if (sheet.spell.byClass.length > 1)
+    rows.push([
+      "Заклинания",
+      sheet.spell.byClass.map((c) => `${c.name}: СЛ ${c.dc.value}, атака ${c.attack.value >= 0 ? "+" : ""}${c.attack.value}`).join(" · "),
+    ]);
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line p-3 text-sm">
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-muted">{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {issues.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg bg-danger-soft p-2 text-danger">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            Требования мультикласса не выполнены: {issues.join("; ")}. Если мастер разрешил, ничего делать не нужно.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ClassTab() {
   const doc = useDoc();
   const sheet = useComputed();
   const change = useChange();
+  const open = useOpenDialog();
   const features = doc.features.filter((f) => f.kind === "class");
   const mainClass = doc.classes[0];
-  const addClass = (presetId: string | null) => {
-    const preset = presetId ? CLASS_PRESETS.find((p) => p.id === presetId) ?? null : null;
-    change((d) => {
-      if (preset) applyClassPreset(d as CharacterDoc, preset, { level: 1 });
-      else d.classes.push(classEntryFromPreset(null, { name: "Новый класс", level: 1 }));
-    }, makeEvent("level", `Добавлен класс «${preset?.name ?? "Новый класс"}»`));
-  };
   return (
     <div className="flex flex-col gap-4">
       <Panel
@@ -136,24 +194,25 @@ export function ClassTab() {
           </span>
         }
         actions={
-          <Menu
-            trigger={
-              <Button size="sm" variant="ghost">
+          <>
+            {doc.classes.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => open({ kind: "level-up" })} disabled={sheet.level >= 20}>
+                <ArrowUpCircle /> Повысить уровень
+              </Button>
+            )}
+            <Tip content={doc.classes.length ? "Взять уровень в другом классе: требования и владения по правилам мультикласса" : undefined}>
+              <Button size="sm" variant="ghost" onClick={() => open({ kind: "add-class" })} disabled={sheet.level >= 20}>
                 <Plus /> {doc.classes.length ? "Мультикласс" : "Класс"}
               </Button>
-            }
-            items={[
-              ...CLASS_PRESETS.map((p) => ({ label: p.name, onSelect: () => addClass(p.id) })),
-              "separator" as const,
-              { label: "Свой класс", onSelect: () => addClass(null) },
-            ]}
-          />
+            </Tip>
+          </>
         }
       >
         <div className="flex flex-col gap-3">
           {doc.classes.map((c, i) => (
             <ClassRow key={c.id} entry={c} index={i} />
           ))}
+          {doc.classes.length > 1 && <MulticlassSummary />}
           {!doc.classes.length && <p className="text-sm text-muted">Класс не выбран. Добавьте его кнопкой справа.</p>}
         </div>
       </Panel>

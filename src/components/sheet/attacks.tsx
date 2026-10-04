@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/misc";
 import { Tip } from "@/components/ui/overlay";
 import { modeFromEvent, statMode, useRoll } from "./dice";
 import { FormulaPreview } from "./effects";
+import { StatTipBody } from "./stat";
 
 export const ATTACK_ABILITY_OPTIONS = [
   { value: "str", label: "Сила" },
@@ -179,7 +180,16 @@ export function AttackLine({ row, onEdit }: { row: AttackRow; onEdit?: () => voi
         {row.error && <div className="text-xs text-danger">{row.error}</div>}
       </div>
       {toHit && (
-        <Tip content="Бросок атаки (Shift — преимущество, Alt — помеха)">
+        <Tip
+          content={
+            <StatTipBody
+              title={`${row.name || "Атака"}: бросок атаки`}
+              stat={toHit}
+              info="Shift — с преимуществом, Alt — с помехой."
+              hint="Нажмите, чтобы бросить"
+            />
+          }
+        >
           <button
             type="button"
             onClick={(e) =>
@@ -197,13 +207,21 @@ export function AttackLine({ row, onEdit }: { row: AttackRow; onEdit?: () => voi
         </Tip>
       )}
       {row.saveDc !== null && (
-        <span className="flex h-9 items-center rounded-lg border border-line bg-panel-2 px-2 text-sm tabular-nums">
-          СЛ {row.saveDc}
-          {row.saveAbility && ` ${ABILITY_LABELS[row.saveAbility].short}`}
-        </span>
+        <Tip
+          content={
+            row.saveAbility
+              ? `Цель делает спасбросок ${ABILITY_LABELS[row.saveAbility].full} против СЛ ${row.saveDc}`
+              : `Цель делает спасбросок против СЛ ${row.saveDc}`
+          }
+        >
+          <span className="flex h-9 cursor-default items-center rounded-lg border border-line bg-panel-2 px-2 text-sm tabular-nums">
+            СЛ {row.saveDc}
+            {row.saveAbility && ` ${ABILITY_LABELS[row.saveAbility].short}`}
+          </span>
+        </Tip>
       )}
       {row.damageValue && (
-        <Tip content="Бросок урона">
+        <Tip content={`Бросок урона: ${row.damage}${row.damageType ? `, ${row.damageType}` : ""}. Модификаторы и бонусы уже учтены`}>
           <button
             type="button"
             onClick={() => roll({ label: `${row.name}: урон`, value: row.damageValue!, detail: row.damageType || undefined })}

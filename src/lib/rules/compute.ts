@@ -14,7 +14,7 @@ import {
 } from "./constants";
 import { CONDITIONS } from "./conditions";
 import { evalFormula, formatValue, hasDice, type DiceTerm, type FValue } from "./formula";
-import type { Attack, CharacterDoc, Effect, Feature, Item, ProfLevel } from "./schema";
+import type { Attack, CharacterDoc, ClassEntry, Effect, Feature, Item, ProfLevel } from "./schema";
 import { cantripTier, computePact, computeSlots, findClassPreset } from "./tables";
 
 export type SourceType = "base" | "bonus" | "item" | "feature" | "condition" | "builtin" | "override";
@@ -352,6 +352,8 @@ export class Calculator {
         return this.numeric(key, proficiencyForLevel(this.level()), "По уровню персонажа", ["prof"]);
       case "ability": {
         const a = p[1] as Ability;
+        // Group keys like "ability.all.score" or "save.all" only exist as effect targets.
+        if (!ABILITIES.includes(a)) break;
         if (p[2] === "score")
           return this.numeric(key, this.doc.abilities[a]?.base ?? 10, "Базовое значение", [key, "ability.all.score"]);
         if (p[2] === "check") {
@@ -361,10 +363,13 @@ export class Calculator {
         break;
       }
       case "save":
+        if (!ABILITIES.includes(p[1] as Ability)) break;
         return this.saveStat(p[1] as Ability);
       case "skill":
+        if (!SKILL_IDS.includes(p[1] as SkillId)) break;
         return this.skillStat(p[1] as SkillId);
       case "passive":
+        if (!SKILL_IDS.includes(p[1] as SkillId)) break;
         return this.passiveStat(p[1] as SkillId);
       case "initiative":
         return this.numeric(key, this.abilityMod("dex"), "Модификатор ЛОВ", ["initiative", "ability.dex.check", "check.all"]);
@@ -655,21 +660,49 @@ export class Calculator {
     return "int";
   }
 
-  private spellStat(p: string[]): Stat {
-    const a = this.spellAbility();
+  /** Spellcasting ability of one class (multiclass casters have one per class). */
+  classSpellAbility(c: ClassEntry): Ability {
+    if (c.spellAbility) return c.spellAbility;
+    const preset = findClassPreset(c.preset || c.name);
+    return preset?.spellAbility || this.spellAbility();
+  }
+
+  /** Classes that cast spells, in sheet order. */
+  spellClasses(): ClassEntry[] {
+    return this.doc.classes.filter((c) => c.caster !== "none" || c.spellAbility);
+  }
+
+  private spellNumber(key: string, kind: string, a: Ability, targets: string[]): Stat {
     const mod = this.abilityMod(a);
     const prof = this.value("prof");
-    switch (p[0]) {
+    switch (kind) {
       case "mod":
-        return this.numeric("spell.mod", mod, `Модификатор ${ABILITY_LABELS[a].short}`, ["spell.mod"]);
+        return this.numeric(key, mod, `Модификатор ${ABILITY_LABELS[a].short}`, ["spell.mod", ...targets]);
       case "dc":
-        return this.numeric("spell.dc", 8 + prof + mod, `8 + мастерство (${prof}) + ${ABILITY_LABELS[a].short} (${mod})`, ["spell.dc"]);
+        return this.numeric(key, 8 + prof + mod, `8 + мастерство (${prof}) + ${ABILITY_LABELS[a].short} (${mod})`, ["spell.dc", ...targets]);
       case "attack":
-        return this.numeric("spell.attack", prof + mod, `Мастерство (${prof}) + ${ABILITY_LABELS[a].short} (${mod})`, [
+        return this.numeric(key, prof + mod, `Мастерство (${prof}) + ${ABILITY_LABELS[a].short} (${mod})`, [
           "spell.attack",
           "attack.spell",
           "attack.all",
+          ...targets,
         ]);
+    }
+    return emptyStat(key, 0);
+  }
+
+  private spellStat(p: string[]): Stat {
+    switch (p[0]) {
+      case "mod":
+      case "dc":
+      case "attack":
+        return this.spellNumber(`spell.${p[0]}`, p[0], this.spellAbility(), []);
+      case "class": {
+        // spell.class.<classId>.dc|attack|mod
+        const key = `spell.class.${p[1]}.${p[2]}`;
+        const c = this.doc.classes.find((x) => x.id === p[1]);
+        return this.spellNumber(key, p[2], c ? this.classSpellAbility(c) : this.spellAbility(), [key]);
+      }
       case "slots": {
         const level = Number(p[1]);
         const sc = this.doc.spellcasting;
@@ -870,6 +903,14 @@ export function computeSheet(doc: CharacterDoc) {
       slots,
       pact,
       hasCasting: slots.some((x) => x > 0) || pact.count > 0 || doc.spellcasting.spells.length > 0,
+      /** Per-class DC and attack for multiclass casters. */
+      byClass: c.spellClasses().map((cls) => ({
+        id: cls.id,
+        name: cls.name || "Класс",
+        ability: c.classSpellAbility(cls),
+        dc: c.get(`spell.class.${cls.id}.dc`),
+        attack: c.get(`spell.class.${cls.id}.attack`),
+      })),
     },
     defenses: {
       resist: c.grants("resist"),

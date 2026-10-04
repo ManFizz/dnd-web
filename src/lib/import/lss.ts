@@ -262,21 +262,35 @@ export function importLss(input: string | unknown): LssImportResult {
 
   const className = str(val(info.charClass));
   const level = Math.min(20, Math.max(1, Math.floor(num(val(info.level), 1))));
-  const preset = findClassPreset(className);
   const hitDieMatch = /d(\d+)/i.exec(str(val(vitality["hit-die"])));
-  doc.classes = [
-    {
+  const lssHitDie = hitDieMatch ? Number(hitDieMatch[1]) : null;
+  const parts = splitLssClasses(className, str(val(info.charSubclass)), level);
+  doc.classes = parts.map((part) => {
+    const p = findClassPreset(part.name);
+    return {
       id: newId("cl"),
-      name: className || "Класс",
-      preset: preset?.id ?? "",
-      subclass: str(val(info.charSubclass)),
-      level,
-      hitDie: hitDieMatch ? Number(hitDieMatch[1]) : (preset?.hitDie ?? 8),
-      caster: preset ? (doc.settings.edition === "2024" && preset.caster2024 ? preset.caster2024 : preset.caster) : "none",
-      spellAbility: preset?.spellAbility ?? "",
-    },
-  ];
-  if (!preset && className) warnings.push(`Класс «${className}» не распознан: укажите тип заклинателя в настройках класса.`);
+      name: part.name || "Класс",
+      preset: p?.id ?? "",
+      subclass: part.subclass,
+      level: part.level,
+      // LSS stores one hit die; with several classes each class keeps its own.
+      hitDie: (parts.length === 1 ? lssHitDie : null) ?? p?.hitDie ?? lssHitDie ?? 8,
+      caster: p ? (doc.settings.edition === "2024" && p.caster2024 ? p.caster2024 : p.caster) : "none",
+      spellAbility: p?.spellAbility ?? "",
+    };
+  });
+  for (const c of doc.classes) {
+    if (!c.preset && c.name !== "Класс") warnings.push(`Класс «${c.name}» не распознан: укажите тип заклинателя в настройках класса.`);
+  }
+  if (parts.length > 1) {
+    summary.push(`Мультикласс: ${parts.map((c) => `${c.name} ${c.level}`).join(" / ")}`);
+    const total = parts.reduce((a, c) => a + c.level, 0);
+    if (total !== level) warnings.push(`Сумма уровней классов (${total}) не совпадает с уровнем в LSS (${level}). Проверьте вкладку «Класс».`);
+  } else if (/[/+]/.test(className)) {
+    warnings.push(`«${className}» похоже на мультикласс без уровней: разделите классы во вкладке «Класс».`);
+  }
+  // The class that casts spells: its ability is what LSS calls the spellcasting base.
+  const castingClass = doc.classes.find((c) => c.caster !== "none") ?? doc.classes[0];
 
   // Abilities, saves, skills ----------------------------------------------
   const stats = isObj(sheet.stats) ? sheet.stats : {};
@@ -350,8 +364,14 @@ export function importLss(input: string | unknown): LssImportResult {
   }
   const diceLeft = num(val(vitality["hp-dice-current"]), NaN);
   if (Number.isFinite(diceLeft)) {
-    const used = Math.max(0, level - Math.floor(diceLeft));
-    if (used > 0) doc.combat.hitDiceUsed[String(doc.classes[0].hitDie)] = used;
+    let used = Math.max(0, doc.classes.reduce((a, c) => a + c.level, 0) - Math.floor(diceLeft));
+    // LSS counts dice without types: spend the biggest dice first.
+    for (const c of [...doc.classes].sort((a, b) => b.hitDie - a.hitDie)) {
+      const key = String(c.hitDie);
+      const take = Math.min(used, c.level - (doc.combat.hitDiceUsed[key] ?? 0));
+      if (take > 0) doc.combat.hitDiceUsed[key] = (doc.combat.hitDiceUsed[key] ?? 0) + take;
+      used -= Math.max(0, take);
+    }
   }
   const acRaw = num(val(vitality.ac), NaN);
   if (Number.isFinite(acRaw)) {
@@ -580,9 +600,9 @@ export function importLss(input: string | unknown): LssImportResult {
   const spellsInfo = isObj(sheet.spellsInfo) ? sheet.spellsInfo : {};
   const baseCode = isObj(spellsInfo.base) ? str(spellsInfo.base.code) : "";
   if (isAbility(baseCode)) {
-    const presetAbility = doc.classes[0].spellAbility || preset?.spellAbility;
+    const presetAbility = castingClass.spellAbility;
     doc.spellcasting.ability = baseCode === presetAbility ? "auto" : baseCode;
-    if (!doc.classes[0].spellAbility) doc.classes[0].spellAbility = baseCode;
+    if (!castingClass.spellAbility) castingClass.spellAbility = baseCode;
   }
   for (const [field, key] of [
     ["save", "spell.dc"],
@@ -649,4 +669,36 @@ export function importLss(input: string | unknown): LssImportResult {
   }
 
   return { doc: parseCharacterDoc(doc), warnings, summary };
+}
+
+/**
+ * LSS keeps all classes in one text field. Multiclass characters usually write
+ * it as "Воин 5 / Волшебник 3"; when every part has a level, each becomes a class.
+ */
+export function splitLssClasses(text: string, subclass: string, level: number): { name: string; level: number; subclass: string }[] {
+  const parts = text
+    .split(/\s*[/+,;|]\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const subs = subclass
+    .split(/\s*\/\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const re = /^(.*?[^\s(])[\s(]*(\d{1,2})\s*(?:-?(?:й|ый|ур\.?|уровень|уровня|lvl\.?|lv\.?))?\)?$/i;
+  if (parts.length > 1) {
+    const matched = parts.map((p) => re.exec(p));
+    if (matched.every((m) => m !== null)) {
+      const list = matched.map((m, i) => ({
+        name: m![1].trim(),
+        level: Number(m![2]),
+        subclass: subs.length === parts.length ? subs[i] : i === 0 ? subclass.trim() : "",
+      }));
+      const total = list.reduce((a, c) => a + c.level, 0);
+      if (list.every((c) => c.level >= 1 && c.level <= 20) && total <= 20) return list;
+    }
+  }
+  // "Волшебник 13" with the same level as the sheet: drop the number from the name.
+  const single = re.exec(text.trim());
+  if (parts.length === 1 && single && Number(single[2]) === level) return [{ name: single[1].trim(), level, subclass: subclass.trim() }];
+  return [{ name: text.trim(), level, subclass: subclass.trim() }];
 }

@@ -35,7 +35,6 @@ const LARGE: { key: LoreKey; title: string; placeholder: string }[] = [
   { key: "backstory", title: "История персонажа", placeholder: "Откуда он, что с ним случилось до начала приключений" },
   { key: "background", title: "Предыстория", placeholder: "Подробности предыстории и её умения" },
   { key: "allies", title: "Союзники и организации", placeholder: "Гильдии, друзья, враги" },
-  { key: "quests", title: "Цели и задания", placeholder: "Что персонаж хочет и что ему поручили" },
 ];
 
 function LoreEditor({ k, placeholder }: { k: LoreKey; placeholder: string }) {
@@ -61,6 +60,10 @@ export function LoreTab() {
   const change = useChange();
   return (
     <div className="flex flex-col gap-4">
+      {/* Goals change every session, so they come first. */}
+      <Panel title="Цели и задания">
+        <LoreEditor k="quests" placeholder="Что персонаж хочет и что ему поручили" />
+      </Panel>
       <Panel title="Кратко">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {INFO_FIELDS.map((f) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, LogOut, ScrollText, Sparkles, Upload, UserRound, Users } from "lucide-react";
+import { BookOpenText, LogOut, ScrollText, Settings, Sparkles, Upload, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -77,6 +77,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
                 { label: <span className="truncate text-muted">{user.email}</span>, onSelect: () => {}, disabled: true },
                 "separator",
                 { label: "Мои персонажи", icon: <Users />, onSelect: () => router.push("/characters") },
+                { label: "Аккаунт и вход", icon: <Settings />, onSelect: () => router.push("/account") },
                 { label: "Импорт из Long Story Short", icon: <BookOpenText />, onSelect: () => router.push("/characters/import") },
                 ...(user.isAdmin ? [{ label: "Загрузка заклинаний", icon: <Upload />, onSelect: () => router.push("/spells/import") }] : []),
                 "separator",

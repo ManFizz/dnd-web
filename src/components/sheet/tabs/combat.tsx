@@ -3,6 +3,7 @@
 import { Plus, Sparkles } from "lucide-react";
 import { ABILITY_LABELS } from "@/lib/rules/constants";
 import { formatStat } from "@/lib/rules/compute";
+import { STAT_INFO } from "@/lib/rules/glossary";
 import { Button } from "@/components/ui/button";
 import { Empty, Panel } from "@/components/ui/misc";
 import { AttackLine } from "../attacks";
@@ -64,33 +65,45 @@ export function CombatTab({ onTab }: { onTab: (tab: string) => void }) {
             </Button>
           }
         >
-          <div className="mb-3 flex flex-wrap gap-4 text-sm">
-            <div>
-              <span className="text-muted">Характеристика </span>
-              <span className="font-semibold">{ABILITY_LABELS[sheet.spell.ability].short}</span>
-            </div>
-            <StatPopover
-              title="Сложность спасброска"
-              stat={sheet.spell.dc}
-              signed={false}
-              trigger={
-                <button type="button" className="hover:text-accent">
-                  <span className="text-muted">СЛ </span>
-                  <span className="font-semibold">{sheet.spell.dc.value}</span>
-                </button>
-              }
-            />
-            <StatPopover
-              title="Атака заклинанием"
-              stat={sheet.spell.attack}
-              rollLabel="Атака заклинанием"
-              trigger={
-                <button type="button" className="hover:text-accent">
-                  <span className="text-muted">Атака </span>
-                  <span className="font-semibold">{formatStat(sheet.spell.attack)}</span>
-                </button>
-              }
-            />
+          <div className="mb-3 flex flex-col gap-1.5 text-sm">
+            {(sheet.spell.byClass.length > 1
+              ? sheet.spell.byClass
+              : [{ id: "", name: "", ability: sheet.spell.ability, dc: sheet.spell.dc, attack: sheet.spell.attack }]
+            ).map((c) => (
+              <div key={c.id} className="flex flex-wrap gap-x-4 gap-y-1">
+                {c.name && <span className="min-w-24 font-medium">{c.name}</span>}
+                <div>
+                  <span className="text-muted">Характеристика </span>
+                  <span className="font-semibold">{ABILITY_LABELS[c.ability].short}</span>
+                </div>
+                <StatPopover
+                  title={c.name ? `СЛ заклинаний: ${c.name}` : "Сложность спасброска"}
+                  stat={c.dc}
+                  signed={false}
+                  info={STAT_INFO.spellDc}
+                  bonusTarget="spell.dc"
+                  trigger={
+                    <button type="button" className="hover:text-accent">
+                      <span className="text-muted">СЛ </span>
+                      <span className="font-semibold">{c.dc.value}</span>
+                    </button>
+                  }
+                />
+                <StatPopover
+                  title={c.name ? `Атака заклинанием: ${c.name}` : "Атака заклинанием"}
+                  stat={c.attack}
+                  info={STAT_INFO.spellAttack}
+                  bonusTarget="spell.attack"
+                  rollLabel={c.name ? `Атака заклинанием (${c.name})` : "Атака заклинанием"}
+                  trigger={
+                    <button type="button" className="hover:text-accent">
+                      <span className="text-muted">Атака </span>
+                      <span className="font-semibold">{formatStat(c.attack)}</span>
+                    </button>
+                  }
+                />
+              </div>
+            ))}
           </div>
           <SlotsEditor compact />
         </Panel>

@@ -234,6 +234,8 @@ export const CharacterSpellSchema = z.object({
   alwaysPrepared: z.boolean().default(false),
   inBook: z.boolean().default(false),
   source: shortText(),
+  /** Class whose DC and attack the spell uses (multiclass casters); "" = the main one. */
+  classId: z.string().max(80).default(""),
   /** Per-character changes on top of the library spell. */
   override: SpellOverrideSchema.nullable().default(null),
   /** Full spell data for character-only spells (spellId == null). */
@@ -334,6 +336,11 @@ export const CharacterDocSchema = z.object({
         )
         .prefault({}),
       inspiration: z.number().int().min(0).max(99).default(0),
+      /** Where each inspiration point came from, oldest first (may be shorter than the count). */
+      inspirationNotes: z
+        .array(z.object({ id, reason: shortText(300), at: shortText(40) }))
+        .max(99)
+        .default([]),
       exhaustion: z.number().int().min(0).max(10).default(0),
       conditions: z.array(z.string().max(60)).max(40).default([]),
       concentration: ConcentrationSchema.nullable().default(null),

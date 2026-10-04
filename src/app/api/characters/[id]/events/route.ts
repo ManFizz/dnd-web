@@ -10,6 +10,7 @@ export const GET = handler(async (req: NextRequest, ctx: RouteContext<"/api/char
     cursor: sp.get("cursor") ?? undefined,
     limit: Number(sp.get("limit") ?? 50),
     kind: sp.get("kind") ?? undefined,
+    q: sp.get("q") ?? undefined,
   });
   return Response.json(result);
 });

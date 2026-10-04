@@ -24,7 +24,15 @@ export async function generateMetadata(props: PageProps<"/characters/[id]">): Pr
 
 export default async function CharacterPage(props: PageProps<"/characters/[id]">) {
   const { id } = await props.params;
-  const { tab } = await props.searchParams;
+  const { tab, panel } = await props.searchParams;
   const character = await load(id);
-  return <SheetApp id={character.id} doc={character.doc} version={character.version} initialTab={typeof tab === "string" ? tab : undefined} />;
+  return (
+    <SheetApp
+      id={character.id}
+      doc={character.doc}
+      version={character.version}
+      initialTab={typeof tab === "string" ? tab : undefined}
+      initialPanel={typeof panel === "string" ? panel : undefined}
+    />
+  );
 }

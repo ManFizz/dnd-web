@@ -4,9 +4,11 @@ import { BookOpen, Library, Lock, Pencil, Plus, Search, Sparkles, Wand2, WandSpa
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ABILITIES, ABILITY_LABELS } from "@/lib/rules/constants";
-import { formatStat } from "@/lib/rules/compute";
+import { formatStat, type Sheet } from "@/lib/rules/compute";
+import { STAT_INFO } from "@/lib/rules/glossary";
+import { spellClassId } from "@/lib/rules/multiclass";
 import { formatValue, hasDice } from "@/lib/rules/formula";
-import type { CharacterSpell, SpellData } from "@/lib/rules/schema";
+import type { CharacterDoc, CharacterSpell, SpellData } from "@/lib/rules/schema";
 import { resolveCharacterSpell, SOURCE_LABELS } from "@/lib/spells";
 import { RichEditor } from "@/components/rich/editor";
 import { RichView } from "@/components/rich/view";
@@ -17,7 +19,7 @@ import { Tip } from "@/components/ui/overlay";
 import { modeFromEvent, statMode, useRoll } from "../dice";
 import { useOpenDialog } from "../dialogs-context";
 import { SpellBadges, spellLevelTitle } from "../spell-form";
-import { StatPopover } from "../stat";
+import { StatPopover, StatTipBody } from "../stat";
 import { makeEvent, useChange, useComputed, useDoc, useSheet } from "../store";
 
 export function SlotsEditor({ compact }: { compact?: boolean }) {
@@ -36,7 +38,18 @@ export function SlotsEditor({ compact }: { compact?: boolean }) {
         const used = Math.min(total, doc.spellcasting.slotsUsed[l] ?? 0);
         return (
           <div key={l} className="flex items-center gap-3">
-            <span className="w-12 shrink-0 text-xs font-semibold text-muted">{l} ур.</span>
+            <Tip
+              content={
+                <StatTipBody
+                  title={`Ячейки ${l} уровня`}
+                  stat={sheet.calc.get(`spell.slots.${l}`)}
+                  signed={false}
+                  info={`${STAT_INFO.slots} Сейчас свободно ${total - used} из ${total}.`}
+                />
+              }
+            >
+              <span className="w-12 shrink-0 cursor-default text-xs font-semibold text-muted">{l} ур.</span>
+            </Tip>
             <Pips
               total={total}
               available={total - used}
@@ -59,7 +72,11 @@ export function SlotsEditor({ compact }: { compact?: boolean }) {
       })}
       {pact.count > 0 && (
         <div className="flex items-center gap-3">
-          <span className="w-12 shrink-0 text-xs font-semibold text-muted">Договор</span>
+          <Tip
+            content={`Магия договора колдуна: ${pact.count} яч. ${pact.level} уровня. Все ячейки одного уровня и восстанавливаются после короткого или длинного отдыха.`}
+          >
+            <span className="w-12 shrink-0 cursor-default text-xs font-semibold text-muted">Договор</span>
+          </Tip>
           <Pips
             total={pact.count}
             available={pact.count - Math.min(pact.count, doc.spellcasting.pactUsed)}
@@ -139,6 +156,15 @@ function componentsShort(c: string): string {
 
 type Row = { entry: CharacterSpell; data: SpellData | null; missing: boolean; overridden: boolean };
 
+/** Casting class of a spell when the character has several: its own DC and attack. */
+export function castingClassOf(sheet: Sheet, doc: CharacterDoc, entry: CharacterSpell, data: SpellData | null) {
+  const byClass = sheet.spell.byClass;
+  if (byClass.length < 2) return undefined;
+  const casters = doc.classes.filter((c) => byClass.some((b) => b.id === c.id));
+  const id = spellClassId(entry, casters, data?.classes ?? []);
+  return byClass.find((b) => b.id === id);
+}
+
 function SpellRow({ row }: { row: Row }) {
   const { entry, data } = row;
   const [open, setOpen] = useState(false);
@@ -153,6 +179,10 @@ function SpellRow({ row }: { row: Row }) {
   const level = data?.level ?? entry.level;
   const concentrating = doc.combat.concentration?.spellEntryId === entry.id;
   const damage = data?.damage ? sheet.calc.evaluate(data.damage) : null;
+  const casting = castingClassOf(sheet, doc, entry, data);
+  const attack = casting?.attack ?? sheet.spell.attack;
+  const dc = casting?.dc ?? sheet.spell.dc;
+  const ability = casting?.ability ?? sheet.spell.ability;
 
   const togglePrepared = () =>
     change((d) => {
@@ -204,6 +234,11 @@ function SpellRow({ row }: { row: Row }) {
               </Tip>
             )}
             {concentrating && <Badge tone="magic">концентрация</Badge>}
+            {casting && (
+              <Tip content={`СЛ и атака считаются по классу «${casting.name}» (${ABILITY_LABELS[casting.ability].full})`}>
+                <Badge tone="info">{casting.name}</Badge>
+              </Tip>
+            )}
           </div>
           {data && (
             <div className="truncate text-xs text-muted">
@@ -214,26 +249,28 @@ function SpellRow({ row }: { row: Row }) {
         </button>
         <div className="flex items-center gap-1.5">
           {data?.attack && (
-            <Tip content="Атака заклинанием (Shift — преимущество, Alt — помеха)">
+            <Tip content={`Атака заклинанием: мастерство + ${ABILITY_LABELS[ability].short}. Shift — преимущество, Alt — помеха`}>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={(e) =>
                   roll({
                     label: `${name}: атака`,
-                    value: { n: sheet.spell.attack.value, dice: sheet.spell.attack.dice },
-                    d20: modeFromEvent(e) ?? statMode(sheet.spell.attack),
+                    value: { n: attack.value, dice: attack.dice },
+                    d20: modeFromEvent(e) ?? statMode(attack),
                   })
                 }
               >
-                {formatStat(sheet.spell.attack)}
+                {formatStat(attack)}
               </Button>
             </Tip>
           )}
           {data?.save && (
-            <span className="rounded-lg border border-line px-2 py-1 text-xs tabular-nums">
-              СЛ {sheet.spell.dc.value} {ABILITY_LABELS[data.save].short}
-            </span>
+            <Tip content={`Цель делает спасбросок ${ABILITY_LABELS[data.save].full} против СЛ ${dc.value} (8 + мастерство + ${ABILITY_LABELS[ability].short})`}>
+              <span className="rounded-lg border border-line px-2 py-1 text-xs tabular-nums">
+                СЛ {dc.value} {ABILITY_LABELS[data.save].short}
+              </span>
+            </Tip>
           )}
           {damage?.ok && (
             <Tip content={data?.damageType ? `Урон: ${data.damageType}` : "Бросок"}>
@@ -313,6 +350,41 @@ function SpellRow({ row }: { row: Row }) {
   );
 }
 
+function SpellStatBox({
+  label,
+  title,
+  stat,
+  info,
+  rollLabel,
+  signed = false,
+  bonusTarget,
+}: {
+  label: string;
+  title: string;
+  stat: Sheet["spell"]["dc"];
+  info: string;
+  rollLabel?: string;
+  signed?: boolean;
+  bonusTarget?: string;
+}) {
+  return (
+    <StatPopover
+      title={title}
+      stat={stat}
+      signed={signed}
+      info={info}
+      rollLabel={rollLabel}
+      bonusTarget={bonusTarget}
+      trigger={
+        <button type="button" className="flex flex-col items-center rounded-xl border border-line bg-panel-2 px-4 py-1.5 hover:border-accent">
+          <span className="text-[10px] font-semibold tracking-widest text-muted uppercase">{label}</span>
+          <span className="font-display text-2xl font-bold tabular-nums">{signed ? formatStat(stat) : stat.value}</span>
+        </button>
+      }
+    />
+  );
+}
+
 export function SpellsTab() {
   const doc = useDoc();
   const sheet = useComputed();
@@ -345,6 +417,7 @@ export function SpellsTab() {
     groups.set(level, [...(groups.get(level) ?? []), r]);
   }
   const levels = [...groups.keys()].sort((a, b) => a - b);
+  const multi = sheet.spell.byClass.length > 1;
   const preparedCount = rows.filter((r) => (r.data?.level ?? r.entry.level) > 0 && (r.entry.prepared || r.entry.alwaysPrepared)).length;
   const unresolved = doc.meta.unresolvedSpells.length;
 
@@ -359,7 +432,28 @@ export function SpellsTab() {
         }
       >
         <div className="mb-4 flex flex-wrap items-end gap-4">
-          <Field label="Характеристика">
+          {multi &&
+            sheet.spell.byClass.map((c) => (
+              <div key={c.id} className="flex items-end gap-2">
+                <Field label={c.name}>
+                  <span className="flex h-9 items-center text-sm text-muted">{ABILITY_LABELS[c.ability].full}</span>
+                </Field>
+                <SpellStatBox label="СЛ" title={`СЛ заклинаний: ${c.name}`} stat={c.dc} info={STAT_INFO.spellDc} bonusTarget="spell.dc" />
+                <SpellStatBox
+                  label="Атака"
+                  title={`Атака заклинанием: ${c.name}`}
+                  stat={c.attack}
+                  info={STAT_INFO.spellAttack}
+                  rollLabel={`Атака заклинанием (${c.name})`}
+                  signed
+                  bonusTarget="spell.attack"
+                />
+              </div>
+            ))}
+          <Field
+            label={multi ? "Прочие заклинания" : "Характеристика"}
+            hint={multi ? "Раса, черты и предметы; класс заклинания выбирается в его карточке" : undefined}
+          >
             <Select
               value={doc.spellcasting.ability}
               onChange={(e) =>
@@ -377,38 +471,9 @@ export function SpellsTab() {
               className="w-48"
             />
           </Field>
-          <StatPopover
-            title="Сложность спасброска заклинаний"
-            stat={sheet.spell.dc}
-            signed={false}
-            trigger={
-              <button type="button" className="flex flex-col items-center rounded-xl border border-line bg-panel-2 px-4 py-1.5 hover:border-accent">
-                <span className="text-[10px] font-semibold tracking-widest text-muted uppercase">СЛ</span>
-                <span className="font-display text-2xl font-bold tabular-nums">{sheet.spell.dc.value}</span>
-              </button>
-            }
-          />
-          <StatPopover
-            title="Бонус атаки заклинанием"
-            stat={sheet.spell.attack}
-            rollLabel="Атака заклинанием"
-            trigger={
-              <button type="button" className="flex flex-col items-center rounded-xl border border-line bg-panel-2 px-4 py-1.5 hover:border-accent">
-                <span className="text-[10px] font-semibold tracking-widest text-muted uppercase">Атака</span>
-                <span className="font-display text-2xl font-bold tabular-nums">{formatStat(sheet.spell.attack)}</span>
-              </button>
-            }
-          />
-          <StatPopover
-            title="Модификатор заклинаний"
-            stat={sheet.spell.mod}
-            trigger={
-              <button type="button" className="flex flex-col items-center rounded-xl border border-line bg-panel-2 px-4 py-1.5 hover:border-accent">
-                <span className="text-[10px] font-semibold tracking-widest text-muted uppercase">Мод.</span>
-                <span className="font-display text-2xl font-bold tabular-nums">{formatStat(sheet.spell.mod)}</span>
-              </button>
-            }
-          />
+          <SpellStatBox label="СЛ" title="Сложность спасброска заклинаний" stat={sheet.spell.dc} info={STAT_INFO.spellDc} />
+          <SpellStatBox label="Атака" title="Бонус атаки заклинанием" stat={sheet.spell.attack} info={STAT_INFO.spellAttack} rollLabel="Атака заклинанием" signed />
+          <SpellStatBox label="Мод." title="Модификатор заклинаний" stat={sheet.spell.mod} info={STAT_INFO.spellMod} signed />
           <div className="text-sm text-muted">
             Подготовлено: <span className="font-semibold text-text">{preparedCount}</span>
           </div>

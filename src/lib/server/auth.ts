@@ -43,7 +43,11 @@ export const auth = betterAuth({
   // In-memory limits reset with every serverless instance, so attempts are counted in Postgres.
   rateLimit: { storage: "database" },
   account: {
-    accountLinking: { enabled: true, trustedProviders: ["google", "discord"] },
+    // Signing in with Google or Discord joins an existing account only when both
+    // sides have a confirmed email (unconfirmed passwords stay separate), so an
+    // unverified provider email cannot take over someone else's characters.
+    // A signed-in user can still connect a provider with another email from the account page.
+    accountLinking: { enabled: true, allowDifferentEmails: true },
   },
   user: {
     additionalFields: {

@@ -8,11 +8,13 @@
 - **Предметы, черты и мутации с эффектами.** Эффект меняет любой показатель: «+1 к КД», «Ловкость не меньше 19», сопротивление огню, владение навыком, преимущество. У предметов есть условия «надет», «настроен», «лежит в сумке». Мутации (части тела от других рас) устроены так же.
 - **Формулы**: `1d4 + 2`, `13 + DEX`, `PROF * 2`. Работают в эффектах, атаках, счётчиках и прямо в тексте заметок, где броски кликабельны.
 - **Заклинания.** Общая библиотека с dnd.su, свои заклинания и правки заклинания только для одного персонажа. Текущая концентрация всегда видна вверху листа.
-- **Счётчики** (рационы, рубины, заряды), несколько вдохновений, отдых, состояния, истощение.
+- **Мультикласс.** Требования к характеристикам, урезанные владения второго класса, общая таблица ячеек, отдельные СЛ и атака для каждого класса-заклинателя. Окно повышения уровня показывает, что изменится: хиты, мастерство, ячейки, увеличение характеристик.
+- **Подсказки при наведении** почти на всё: зачем нужен навык, из чего сложился бонус, откуда кости хитов и каждое вдохновение.
+- **Счётчики** (рационы, рубины, заряды), несколько вдохновений с подписью «за что», отдых, состояния, истощение.
 - **Лишние механики отключаются** в настройках: навыки (например, «Уход за животными», «Религия»), щит, монеты и прочее.
-- **Вкладки** «Раса», «Класс», «Черты», «Мутации», «Лор», «Заметки» вместо одной длинной страницы. Удобный редактор текста с таблицами.
+- **Вкладки** «Раса», «Класс», «Черты», «Мутации», «Лор», «Заметки» вместо одной длинной страницы. Журнал изменений (с поиском) и настройки открываются кнопками справа вверху. Удобный редактор текста с таблицами.
 - **Импорт из Long Story Short** и выгрузка персонажа в JSON. Мастер создания персонажа: стандартный набор, покупка очков, броски.
-- Вход по почте и паролю, через Google и Discord. Тёмная и светлая темы, телефон и компьютер.
+- Вход по почте и паролю, через Google и Discord; способы входа подключаются друг к другу на странице «Аккаунт». Тёмная и светлая темы, телефон и компьютер.
 
 Стек: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, PostgreSQL + Prisma 7, Better Auth, TipTap, Zustand, Zod. Тесты: Vitest и Playwright.
 
@@ -52,10 +54,12 @@ npm run dev                   # http://localhost:3000
 
 ### Вход через Google и Discord
 
-- **Google**: [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application. В Authorized redirect URIs укажите `https://ВАШ-АДРЕС/api/auth/callback/google`.
-- **Discord**: [Discord Developer Portal](https://discord.com/developers/applications) → New Application → OAuth2. В Redirects добавьте `https://ВАШ-АДРЕС/api/auth/callback/discord`.
+- **Google**: [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → создайте проект → OAuth consent screen (External, название сайта, своя почта) → Credentials → Create credentials → OAuth client ID → Web application. В Authorized JavaScript origins укажите `https://ВАШ-АДРЕС`, в Authorized redirect URIs `https://ВАШ-АДРЕС/api/auth/callback/google`. Client ID и Client secret идут в `GOOGLE_CLIENT_ID` и `GOOGLE_CLIENT_SECRET`.
+- **Discord**: [Discord Developer Portal](https://discord.com/developers/applications) → New Application → OAuth2. В Redirects добавьте `https://ВАШ-АДРЕС/api/auth/callback/discord`. Client ID и Client Secret (кнопка Reset Secret) идут в `DISCORD_CLIENT_ID` и `DISCORD_CLIENT_SECRET`.
 
 Для локального запуска добавьте те же адреса с `http://localhost:3000`.
+
+Как связываются аккаунты: вход через Google или Discord с той же почтой попадает в существующий аккаунт, только если почта подтверждена с обеих сторон. Аккаунт, созданный по почте и паролю, автоматически не склеивается (так чужой Discord с вашей почтой не получит доступ к персонажам): войдите по паролю и нажмите «Подключить» на странице «Аккаунт». Там же можно задать пароль аккаунту, созданному через Google или Discord.
 
 ## Деплой на свой сервер (Docker)
 
@@ -66,6 +70,10 @@ DB_PASSWORD=...             # openssl rand -hex 24
 BETTER_AUTH_SECRET=...      # openssl rand -base64 32
 BETTER_AUTH_URL=https://ВАШ-АДРЕС
 ADMIN_EMAILS=               # необязательно
+GOOGLE_CLIENT_ID=           # необязательно, вход через Google
+GOOGLE_CLIENT_SECRET=
+DISCORD_CLIENT_ID=          # необязательно, вход через Discord
+DISCORD_CLIENT_SECRET=
 ```
 
 ```bash

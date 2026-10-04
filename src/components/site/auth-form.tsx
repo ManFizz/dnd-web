@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { oauthErrorText } from "@/lib/auth-errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 
@@ -51,13 +52,13 @@ function ProviderIcon({ provider }: { provider: Provider }) {
   );
 }
 
-export function AuthForm({ mode, next, providers, oauthError }: { mode: "login" | "register"; next: string; providers: Provider[]; oauthError?: boolean }) {
+export function AuthForm({ mode, next, providers, oauthError }: { mode: "login" | "register"; next: string; providers: Provider[]; oauthError?: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(oauthError ? "Не удалось войти через внешний сервис. Попробуйте ещё раз." : null);
+  const [error, setError] = useState<string | null>(() => oauthErrorText(oauthError));
   const register = mode === "register";
   const query = next !== "/characters" ? `?next=${encodeURIComponent(next)}` : "";
 
@@ -80,7 +81,8 @@ export function AuthForm({ mode, next, providers, oauthError }: { mode: "login" 
   const social = async (provider: Provider) => {
     setBusy(provider);
     setError(null);
-    const res = await authClient.signIn.social({ provider, callbackURL: next, errorCallbackURL: `/login?error=oauth${query ? `&${query.slice(1)}` : ""}` });
+    // Better Auth appends ?error=<code> to the error URL.
+    const res = await authClient.signIn.social({ provider, callbackURL: next, errorCallbackURL: `/login${query}` });
     if (res.error) {
       setBusy(null);
       setError(errorText(res.error));
