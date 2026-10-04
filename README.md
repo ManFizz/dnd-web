@@ -57,6 +57,23 @@ npm run dev                   # http://localhost:3000
 
 Для локального запуска добавьте те же адреса с `http://localhost:3000`.
 
+## Деплой на свой сервер (Docker)
+
+Нужны Docker и Docker Compose. Рядом с `docker-compose.yml` создайте `.env`:
+
+```bash
+DB_PASSWORD=...             # openssl rand -hex 24
+BETTER_AUTH_SECRET=...      # openssl rand -base64 32
+BETTER_AUTH_URL=https://ВАШ-АДРЕС
+ADMIN_EMAILS=               # необязательно
+```
+
+```bash
+docker compose up -d --build
+```
+
+Поднимутся Postgres (данные в томе `db-data`) и сайт на `127.0.0.1:3010` (порт меняется через `APP_PORT`). Миграции применяются при каждом старте. Снаружи сайт открывают через обратный прокси с HTTPS, например nginx + certbot. Обновление: `git pull && docker compose up -d --build`.
+
 ## Заклинания с dnd.su
 
 Страница «Заклинания» → «Загрузить с dnd.su» (видна администратору). Способов три, повторная загрузка обновляет заклинания, а не дублирует их:
