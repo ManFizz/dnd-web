@@ -10,20 +10,24 @@ datasource db {
 }
 
 model User {
-  id            String           @id
-  name          String
-  email         String           @unique
-  emailVerified Boolean          @default(false)
-  image         String?
+  id                 String              @id
+  name               String
+  email              String              @unique
+  emailVerified      Boolean             @default(false)
+  image              String?
   /// "admin" can manage the shared spell library.
-  role          String           @default("user")
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  characters    Character[]
-  spells        Spell[]
-  events        CharacterEvent[]
+  role               String              @default("user")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sessions           Session[]
+  accounts           Account[]
+  characters         Character[]
+  spells             Spell[]
+  events             CharacterEvent[]
+  campaignsOwned     Campaign[]          @relation("CampaignOwner")
+  memberships        CampaignMember[]
+  invitesCreated     CampaignInvite[]
+  campaignCharacters CampaignCharacter[]
 
   @@map("user")
 }
@@ -86,20 +90,21 @@ model RateLimit {
 }
 
 model Character {
-  id        String           @id @default(cuid())
+  id        String             @id @default(cuid())
   ownerId   String
-  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name      String
   /// Short line for lists: "Проклятокровый, Волшебник 13".
-  summary   String           @default("")
-  avatarUrl String           @default("")
+  summary   String             @default("")
+  avatarUrl String             @default("")
   /// Full character document (see src/lib/rules/schema.ts).
   data      Json
   /// Incremented on every save, used for optimistic concurrency.
-  version   Int              @default(1)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  version   Int                @default(1)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
   events    CharacterEvent[]
+  campaign  CampaignCharacter?
 
   @@index([ownerId, updatedAt])
 }
@@ -152,4 +157,75 @@ model Spell {
   @@unique([source, externalId])
   @@index([ownerId])
   @@index([level])
+}
+
+/// A campaign (room): the GM and the players with their characters.
+model Campaign {
+  id          String              @id @default(cuid())
+  name        String
+  description String              @default("")
+  ownerId     String
+  owner       User                @relation("CampaignOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Table rules (see src/lib/campaigns.ts).
+  settings    Json
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  members     CampaignMember[]
+  invites     CampaignInvite[]
+  characters  CampaignCharacter[]
+
+  @@index([ownerId])
+}
+
+model CampaignMember {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// gm (the owner), cogm, player, spectator.
+  role       String   @default("player")
+  /// active, or pending while the GM has not approved the join request.
+  status     String   @default("active")
+  joinedAt   DateTime @default(now())
+
+  @@unique([campaignId, userId])
+  @@index([userId])
+}
+
+model CampaignInvite {
+  id              String    @id @default(cuid())
+  campaignId      String
+  campaign        Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  code            String    @unique
+  role            String    @default("player")
+  requireApproval Boolean   @default(false)
+  /// null = unlimited.
+  maxUses         Int?
+  uses            Int       @default(0)
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdById     String?
+  createdBy       User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+
+  @@index([campaignId])
+}
+
+/// A character brought into a campaign. A character belongs to one campaign at most.
+model CampaignCharacter {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  characterId String    @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// pending (waiting for the GM), accepted, returned (sent back with a note).
+  status      String    @default("pending")
+  note        String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([campaignId])
 }

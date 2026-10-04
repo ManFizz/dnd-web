@@ -209,7 +209,7 @@ export function InventoryTab() {
         <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
           <div className="relative min-w-40 flex-1">
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-faint" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск" className="h-8 pl-8" />
+            <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск" className="h-8 pl-8" />
           </div>
           <span className={cn("flex items-center gap-1 text-xs", attuned > 3 ? "text-danger" : "text-muted")}>
             <Gem className="size-3.5" /> Настроено {attuned}/3

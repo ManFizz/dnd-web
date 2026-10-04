@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, LogOut, ScrollText, Settings, Sparkles, Upload, UserRound, Users } from "lucide-react";
+import { BookOpenText, LogOut, ScrollText, Settings, Sparkles, Swords, Upload, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
   const links = user
     ? [
         { href: "/characters", label: "Персонажи", icon: Users },
+        { href: "/campaigns", label: "Кампании", icon: Swords },
         { href: "/spells", label: "Заклинания", icon: Sparkles },
       ]
     : [];

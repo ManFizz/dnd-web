@@ -33,6 +33,7 @@ export default async function CharacterPage(props: PageProps<"/characters/[id]">
       version={character.version}
       initialTab={typeof tab === "string" ? tab : undefined}
       initialPanel={typeof panel === "string" ? panel : undefined}
+      viewOnly={character.access.kind === "gm" ? { campaignId: character.access.campaignId } : undefined}
     />
   );
 }
