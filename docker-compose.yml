@@ -17,6 +17,9 @@ services:
       retries: 10
 
   app:
+    # Prebuilt by .github/workflows/docker.yml; update with `docker compose pull app && docker compose up -d`.
+    # `docker compose up -d --build` still builds locally if needed.
+    image: ghcr.io/manfizz/dnd-web:${APP_IMAGE_TAG:-latest}
     build: .
     restart: unless-stopped
     depends_on:
