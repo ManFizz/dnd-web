@@ -119,31 +119,31 @@ export function ProficienciesTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel title="Спасброски" bodyClassName="flex flex-col gap-1 p-2">
+        <Panel title="Спасброски" bodyClassName="@container flex flex-col gap-1 p-2">
           {ABILITIES.map((a) => (
-            <div key={a} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-1.5 hover:bg-panel-2 sm:grid-cols-[9rem_1fr_3rem]">
-              <div className="flex items-center gap-2 text-sm font-medium">
+            <div key={a} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-1.5 hover:bg-panel-2 @lg:grid-cols-[9rem_minmax(0,1fr)_3rem]">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
                 <ProfMark level={sheet.saveProf[a]} />
                 {ABILITY_LABELS[a].full}
               </div>
-              <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+              <div className="col-span-2 row-start-2 min-w-0 @lg:col-span-1 @lg:row-start-auto">
                 <ProfEditor kind="save" id={a} />
               </div>
-              <div className="col-start-2 row-start-1 text-right font-semibold tabular-nums sm:col-start-auto sm:row-start-auto">{formatStat(sheet.abilities[a].save)}</div>
+              <div className="col-start-2 row-start-1 text-right font-semibold tabular-nums @lg:col-start-auto @lg:row-start-auto">{formatStat(sheet.abilities[a].save)}</div>
             </div>
           ))}
         </Panel>
-        <Panel title="Навыки" bodyClassName="flex flex-col gap-1 p-2">
+        <Panel title="Навыки" bodyClassName="@container flex flex-col gap-1 p-2">
           {SKILL_IDS.filter((s) => !hidden.has(`skill.${s}`)).map((s) => (
-            <div key={s} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-1.5 hover:bg-panel-2 sm:grid-cols-[9rem_1fr_3rem]">
-              <div className="flex items-center gap-2 text-sm font-medium">
+            <div key={s} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-1.5 hover:bg-panel-2 @lg:grid-cols-[9rem_minmax(0,1fr)_3rem]">
+              <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
                 <ProfMark level={sheet.skills[s].prof} />
                 <span className="truncate">{SKILLS[s].label}</span>
               </div>
-              <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+              <div className="col-span-2 row-start-2 min-w-0 @lg:col-span-1 @lg:row-start-auto">
                 <ProfEditor kind="skill" id={s} />
               </div>
-              <div className="col-start-2 row-start-1 text-right font-semibold tabular-nums sm:col-start-auto sm:row-start-auto">{formatStat(sheet.skills[s].stat)}</div>
+              <div className="col-start-2 row-start-1 text-right font-semibold tabular-nums @lg:col-start-auto @lg:row-start-auto">{formatStat(sheet.skills[s].stat)}</div>
             </div>
           ))}
         </Panel>

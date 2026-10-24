@@ -10,7 +10,7 @@ import type { Armor, Attack, Counter, Effect, Feature, GrantMark, Item, Uses, We
 import { ITEM_CATEGORIES, RARITIES } from "@/lib/rules/schema";
 import { RichEditor } from "@/components/rich/editor";
 import { Button } from "@/components/ui/button";
-import { Checkbox, Field, Input, NumberInput, Select, Switch, Textarea } from "@/components/ui/input";
+import { Checkbox, Field, Input, ListInput, NumberInput, Select, Switch, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/misc";
 import { Modal } from "@/components/ui/overlay";
 import { useAsk } from "@/components/ui/prompt";
@@ -216,17 +216,9 @@ export function FeatureDialog({
                 </Field>
               )}
               <Field label="Метки" hint="Через запятую" className={f.kind === "class" || f.kind === "race" ? "" : "sm:col-span-2"}>
-                <Input
-                  value={f.tags.join(", ")}
-                  onChange={(e) =>
-                    set(
-                      "tags",
-                      e.target.value
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean),
-                    )
-                  }
+                <ListInput
+                  value={f.tags}
+                  onChange={(v) => set("tags", v)}
                   placeholder="бой, социальное"
                 />
               </Field>
@@ -329,17 +321,9 @@ function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weap
         <Input value={weapon.range} onChange={(e) => set("range", e.target.value)} placeholder="80/320 фт." />
       </Field>
       <Field label="Свойства" hint="Через запятую">
-        <Input
-          value={weapon.properties.join(", ")}
-          onChange={(e) =>
-            set(
-              "properties",
-              e.target.value
-                .split(",")
-                .map((x) => x.trim())
-                .filter(Boolean),
-            )
-          }
+        <ListInput
+          value={weapon.properties}
+          onChange={(v) => set("properties", v)}
           placeholder="Фехтовальное, лёгкое"
         />
       </Field>

@@ -5,7 +5,7 @@ import { ABILITIES, ABILITY_LABELS, SPELL_SCHOOLS } from "@/lib/rules/constants"
 import { emptyDoc } from "@/lib/rules/richtext";
 import type { SpellData } from "@/lib/rules/schema";
 import { RichEditor } from "@/components/rich/editor";
-import { Checkbox, Field, Input, Select } from "@/components/ui/input";
+import { Checkbox, Field, Input, ListInput, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { DamageTypesDatalist } from "./attacks";
@@ -82,17 +82,9 @@ export function SpellForm({ value, onChange, base }: { value: SpellData; onChang
         <Checkbox checked={value.ritual} onChange={(e) => set("ritual", e.target.checked)} label={label("ritual", "Ритуал")} />
       </div>
       <Field label={label("classes", "Классы")} hint="Через запятую" className="sm:col-span-2">
-        <Input
-          value={value.classes.join(", ")}
-          onChange={(e) =>
-            set(
-              "classes",
-              e.target.value
-                .split(",")
-                .map((x) => x.trim())
-                .filter(Boolean),
-            )
-          }
+        <ListInput
+          value={value.classes}
+          onChange={(v) => set("classes", v)}
           className={ring("classes")}
           placeholder="волшебник, чародей"
         />

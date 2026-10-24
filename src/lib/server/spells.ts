@@ -2,7 +2,8 @@ import "server-only";
 import { z } from "zod";
 import { spellSearchText, type ParsedSpell } from "@/lib/import/dndsu/parse";
 import { RichDocSchema, SpellDataSchema } from "@/lib/rules/schema";
-import { normalizeSpellName, spellMatcher, type LibrarySpell } from "@/lib/spells";
+import { deriveSpellMechanics, normalizeSpellName, spellMatcher, spellMechanics, type LibrarySpell } from "@/lib/spells";
+import { docToText } from "@/lib/rules/richtext";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./db";
 import { HttpError } from "./http";
@@ -32,11 +33,14 @@ const summarySelect = {
 type SpellRow = Prisma.SpellGetPayload<{ select: typeof summarySelect }> & { description?: Prisma.JsonValue };
 
 function toLibrarySpell(row: SpellRow): LibrarySpell {
-  const description = row.description ? RichDocSchema.safeParse(row.description) : null;
+  const parsed = row.description ? RichDocSchema.safeParse(row.description) : null;
+  const description = parsed?.success ? parsed.data : undefined;
   return {
     ...row,
-    mechanics: (row.mechanics as LibrarySpell["mechanics"]) ?? null,
-    description: description?.success ? description.data : undefined,
+    // Spells imported before mechanics were parsed get them from the text.
+    mechanics: spellMechanics(row.mechanics as LibrarySpell["mechanics"], description),
+    description,
+    full: "description" in row,
   };
 }
 
@@ -104,6 +108,7 @@ function rowFromParsed(s: ParsedSpell) {
     classes: s.classes.map((c) => c.toLowerCase()),
     subclasses: s.subclasses,
     description: s.description as unknown as Prisma.InputJsonValue,
+    mechanics: deriveSpellMechanics(docToText(s.description)),
     sourceBook: s.sourceBook,
     url: s.url,
     searchText: normalizeSpellName(spellSearchText(s)),

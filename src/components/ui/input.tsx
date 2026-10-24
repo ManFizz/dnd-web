@@ -15,6 +15,48 @@ export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return <input className={cn(inputClass, "h-9 [&::-webkit-search-cancel-button]:appearance-none", className)} {...props} readOnly={props.readOnly || readOnly} />;
 }
 
+const splitList = (raw: string) =>
+  raw
+    .split(/[,;]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+/**
+ * Comma separated list field. It keeps the typed text as is (a trailing comma
+ * or space stays while typing) and only reformats when the list changes from
+ * outside or on blur.
+ */
+export function ListInput({
+  value,
+  onChange,
+  ...props
+}: Omit<React.ComponentProps<"input">, "value" | "onChange"> & { value: string[]; onChange: (v: string[]) => void }) {
+  const joined = value.join(", ");
+  const [text, setText] = useState(joined);
+  const [last, setLast] = useState(joined);
+  if (joined !== last) {
+    // The list was changed elsewhere (reset, another dialog): show it.
+    setLast(joined);
+    if (splitList(text).join(", ") !== joined) setText(joined);
+  }
+  return (
+    <Input
+      {...props}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const next = splitList(e.target.value);
+        setLast(next.join(", "));
+        onChange(next);
+      }}
+      onBlur={(e) => {
+        setText(joined);
+        props.onBlur?.(e);
+      }}
+    />
+  );
+}
+
 export function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   const readOnly = useReadOnly();
   return <textarea readOnly={readOnly} className={cn(inputClass, "min-h-20 py-2 leading-relaxed [field-sizing:content]", className)} {...props} />;

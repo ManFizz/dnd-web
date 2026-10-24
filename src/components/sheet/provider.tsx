@@ -174,7 +174,7 @@ function useSpellLibrary(store: SheetStore) {
   useEffect(() => {
     const { library, missingSpells } = store.getState();
     const ids = [...new Set(spells.map((s) => s.spellId).filter((id): id is string => !!id))].filter(
-      (id) => !library[id] && !missingSpells.includes(id),
+      (id) => !library[id]?.full && !missingSpells.includes(id),
     );
     if (!ids.length) return;
     let cancelled = false;

@@ -201,7 +201,8 @@ export function createSheetStore(init: { id: string; doc: CharacterDoc; version:
       addLibrary(spells, missing = []) {
         set((s) => {
           const library = { ...s.library };
-          for (const sp of spells) library[sp.id] = sp;
+          // A search result has no description: never replace a full row with it.
+          for (const sp of spells) if (sp.full || !library[sp.id]?.full) library[sp.id] = sp;
           return { library, missingSpells: [...new Set([...s.missingSpells, ...missing])] };
         });
       },

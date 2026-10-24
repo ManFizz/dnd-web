@@ -176,6 +176,15 @@ export function SpellLibraryDialog({ onClose }: { onClose: () => void }) {
             );
           })}
           {search.loaded && search.spells.length === 0 && <div className="px-3 py-6 text-center text-sm text-muted">Ничего не нашлось</div>}
+          {search.loaded && cls.trim() && (q.trim() || search.spells.length === 0) && (
+            // The class filter starts filled in and hides spells of other lists.
+            <div className="px-3 py-2 text-center text-xs text-muted">
+              Показаны только заклинания класса «{cls.trim()}».{" "}
+              <button type="button" className="text-info hover:underline" onClick={() => setCls("")}>
+                Искать во всех классах
+              </button>
+            </div>
+          )}
           {!search.loaded && search.loading && (
             <div className="flex justify-center py-6">
               <Spinner className="text-faint" />

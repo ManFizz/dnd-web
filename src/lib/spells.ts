@@ -1,4 +1,5 @@
-import type { RichDoc } from "@/lib/rules/richtext";
+import type { Ability } from "@/lib/rules/constants";
+import { docToText, type RichDoc } from "@/lib/rules/richtext";
 import type { CharacterSpell, SpellData, SpellOverride } from "@/lib/rules/schema";
 
 // Shapes shared by the spell API and the UI.
@@ -22,8 +23,90 @@ export type LibrarySpell = {
   sourceBook: string;
   url: string;
   description?: RichDoc;
-  mechanics?: Partial<Pick<SpellData, "attack" | "save" | "damage" | "damageType">> | null;
+  mechanics?: SpellMechanics | null;
+  /** True when the row came with its description (search results come without it). */
+  full?: boolean;
 };
+
+export type SpellMechanics = Partial<Pick<SpellData, "attack" | "save" | "damage" | "damageType">>;
+
+const SAVE_STEMS: [RegExp, Ability][] = [
+  [/^сил/, "str"],
+  [/^ловк/, "dex"],
+  [/^телосл/, "con"],
+  [/^интел/, "int"],
+  [/^мудр/, "wis"],
+  [/^харизм/, "cha"],
+];
+
+// Stems of damage types as they appear in spell texts ("урона огнём", "урон звуком").
+const DAMAGE_STEMS: [RegExp, string][] = [
+  [/кислот/, "Кислота"],
+  [/дробящ/, "Дробящий"],
+  [/колющ/, "Колющий"],
+  [/рубящ/, "Рубящий"],
+  [/огн[её]м|огня|огонь/, "Огонь"],
+  [/холод/, "Холод"],
+  [/силов/, "Силовое поле"],
+  [/электричеств|молни/, "Электричество"],
+  [/некроти/, "Некротическая энергия"],
+  [/(?<!\p{L})яд(?:ом|а)?(?!\p{L})/u, "Яд"],
+  [/психическ/, "Психическая энергия"],
+  [/излучени/, "Излучение"],
+  [/звук/, "Звук"],
+];
+
+const DICE = /(?<![\p{L}\d])(\d{1,3})\s*[кkдd]\s*(\d{1,3})(?:\s*([+\-−])\s*(\d{1,3})(?![\p{L}\d]))?(?![\p{L}\d])/iu;
+
+/**
+ * Attack, save and damage guessed from a spell's text, for spells imported
+ * without them ("совершите дальнобойную атаку заклинанием", "спасбросок
+ * Ловкости", "получает 8к6 урона огнём"). Upcasting paragraphs are skipped.
+ */
+export function deriveSpellMechanics(text: string): SpellMechanics {
+  const out: SpellMechanics = {};
+  const t = text.replace(/[ \t\u00a0]+/g, " ").toLowerCase().replace(/ё/g, "е");
+  const attack = /(рукопашн|дальнобойн)\p{L}*\s+атак\p{L}*\s+заклинани/u.exec(t);
+  if (attack) out.attack = attack[1] === "рукопашн" ? "melee" : "ranged";
+  const save = /спасброс\p{L}*\s+(\p{L}+)/u.exec(t);
+  const ability = save && SAVE_STEMS.find(([re]) => re.test(save[1]))?.[1];
+  if (ability) out.save = ability;
+  const sentences = t.split(/(?<=[.!?;])\s+|\n/).filter((x) => !/увеличива|за каждый (уровень|круг)|больших уровн|на \d+[-\s]*м? уровне/.test(x));
+  const dice = (x: string) => {
+    const m = DICE.exec(x);
+    if (!m) return null;
+    const sign = m[3] === "−" ? "-" : m[3];
+    return { text: `${m[1]}d${m[2]}${m[4] ? ` ${sign} ${m[4]}` : ""}`, at: m.index };
+  };
+  for (const x of sentences) {
+    if (!/урон/.test(x)) continue;
+    const d = dice(x);
+    if (!d) continue;
+    out.damage = d.text;
+    // The damage type usually follows the dice ("8к6 урона огнем"), sometimes precedes it.
+    const after = x.slice(d.at);
+    const type = DAMAGE_STEMS.find(([re]) => re.test(after)) ?? DAMAGE_STEMS.find(([re]) => re.test(x));
+    if (type) out.damageType = type[1];
+    return out;
+  }
+  for (const x of sentences) {
+    if (!/хит/.test(x) || !/восстан|лечит|исцел/.test(x)) continue;
+    const d = dice(x);
+    if (!d) continue;
+    out.damage = d.text;
+    out.damageType = "Лечение";
+    return out;
+  }
+  return out;
+}
+
+/** Stored mechanics, or ones guessed from the description when none are stored. */
+export function spellMechanics(stored: SpellMechanics | null | undefined, description?: RichDoc): SpellMechanics | null {
+  if (stored && Object.values(stored).some(Boolean)) return stored;
+  if (!description) return stored ?? null;
+  const derived = deriveSpellMechanics(docToText(description));
+  return Object.keys(derived).length ? derived : (stored ?? null);
+}
 
 export const SOURCE_LABELS: Record<string, string> = {
   dndsu: "dnd.su",
